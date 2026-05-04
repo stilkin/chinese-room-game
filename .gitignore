@@ -1,0 +1,37 @@
+# Dart
+.dart_tool/
+.packages
+build/
+pubspec.lock
+
+# Flutter
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+
+# IDE
+.idea/
+*.swp
+*.swo
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Native build outputs
+android/.gradle/
+android/local.properties
+android/app/debug/
+android/app/profile/
+android/app/release/
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Runner.xcworkspace/
+*.jks
+*.keystore
+
+# Coverage
+coverage/
