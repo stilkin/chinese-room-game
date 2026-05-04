@@ -1,0 +1,40 @@
+schema: spec-driven
+
+context: |
+  Project: Clone Wars — a mobile game where players play classic board games
+  against an AI "clone" that learns from their own past games using case-based
+  reasoning (no neural networks or minimax). The clone narrates every decision.
+  First game is Connect Four, with Othello, Chess, and Go on the roadmap.
+
+  Tech stack: Dart everywhere, Flutter for mobile and web, Dart Frog or Relic
+  for backend, PostgreSQL for online storage, sqflite for local storage.
+
+  Architecture: Dart pub workspace monorepo.
+    - packages/game_engine/ — pure Dart library (no Flutter dependency) with
+      board representation, rules, canonicalization, Zobrist hashing, diffusion
+      kernels, similarity search, move selection, and clone narration.
+    - apps/mobile/ — Flutter mobile app, depends on game_engine.
+    - apps/web/ — Flutter Web frontend (phase 2), depends on game_engine.
+    - server/ — Dart backend (phase 3), depends on game_engine.
+
+  Core engine: boards are 2D Int8 arrays. Similarity search uses Zobrist
+  hashing (exact) and diffused influence maps (fuzzy). Diffusion kernels are
+  game-specific — adding a new game means a rules module + diffusion kernel.
+  Symmetry canonicalization at write time. Losses stored as opponent wins to
+  double training data.
+
+  Build phases: (1) game engine + mobile Connect Four MVP, (2) diffusion +
+  polish, (3) online backend + league + web, (4) more games. Validate fun
+  before building infrastructure.
+
+  Design spec: PROJECT.md
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
