@@ -13,6 +13,7 @@ The game engine is the foundation of Clone Wars — all game logic, the clone AI
 - Add diffused influence map comparison via Hamming distance
 - Implement two-scalar pre-filter (total_material, material_balance) with adaptive widening to reduce search space before full comparison
 - Implement move weighting: wins > draws > losses, fewer moves to win preferred
+- Implement game-specific move selection strategies: vote-by-move (Connect Four/Othello) and influence overlay (Go/Chess) as part of the GameRules interface
 - Implement basic factual clone narration (e.g. "move from game #5", "no data — playing randomly")
 - Define game state data model with outcome/moves_to_end backfilling on game completion
 - Implement cold-start fallback personalities for Connect Four (random, middle-focus, edge-focus, pile-focus)
@@ -27,6 +28,7 @@ The game engine is the foundation of Clone Wars — all game logic, the clone AI
 - `zobrist-hashing`: Zobrist hash computation and incremental update for exact-match board lookup
 - `diffusion-engine`: Diffusion kernel interface and Connect Four implementation — produces influence maps from board states
 - `similarity-search`: Pre-filtering (total_material, material_balance with adaptive widening), diffused map comparison via Hamming distance, candidate ranking
+- `move-selection`: Game-specific move selection strategies — vote-by-move for small move spaces (Connect Four), influence overlay for large move spaces (Go/Chess)
 - `clone-brain`: Move selection pipeline — search, weight, select — plus cold-start fallback personalities
 - `narration`: Basic factual narration text generation for clone decisions
 

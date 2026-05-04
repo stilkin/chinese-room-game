@@ -8,7 +8,7 @@
 ## 2. Board Representation
 
 - [ ] 2.1 Implement `Board` class: 2D `List<List<int>>` with configurable dimensions, Int8List flat view
-- [ ] 2.2 Implement `GameRules` abstract class: board dimensions, legal moves, apply move, check win/draw, piece values, diffusion kernel
+- [ ] 2.2 Implement `GameRules` abstract class: board dimensions, legal moves, apply move, check win/draw, piece values, diffusion kernel, move selection strategy
 - [ ] 2.3 Write tests: board creation, flat view round-trip, dimension validation
 
 ## 3. Connect Four Rules
@@ -51,24 +51,32 @@
 - [ ] 7.5 Implement search pipeline: exact Zobrist match first, then pre-filter → diffusion ranking
 - [ ] 7.6 Write tests: filter excludes distant states, widening triggers correctly, exact match ranks first, Hamming ordering
 
-## 8. Clone Brain
+## 8. Move Selection Strategies
 
-- [ ] 8.1 Implement `GameState` data model: canonical_board, zobrist_hash, diffused_hash, move_played, side, game_id, outcome, moves_to_end
-- [ ] 8.2 Implement `GameLog` in-memory store with add/query/backfill operations
-- [ ] 8.3 Implement outcome backfilling: set outcome and moves_to_end for all states in a completed game
-- [ ] 8.4 Implement move weighting: outcome score × efficiency score, aggregate by move
-- [ ] 8.5 Implement fallback strategies: random, middle_focus, edge_focus, pile_focus for Connect Four
-- [ ] 8.6 Implement `CloneBrain.selectMove()`: search → weight → select → narrate
-- [ ] 8.7 Write tests: weighting prefers wins over draws, fast wins over slow wins, aggregation across candidates, fallback triggers on empty data
+- [ ] 8.1 Define `MoveSelectionStrategy` interface: takes weighted candidates + legal moves, returns chosen move
+- [ ] 8.2 Implement vote-by-move strategy: aggregate weights per move, select highest, tie-break by best individual weight
+- [ ] 8.3 Define influence overlay strategy interface: weighted-average candidate diffusion maps into target map, score legal moves by target map lookup
+- [ ] 8.4 Wire vote-by-move into `ConnectFourRules` as its move selection strategy
+- [ ] 8.5 Write tests: vote aggregation, single candidate, tie-breaking, influence overlay target map averaging, move scoring from target map
 
-## 9. Narration
+## 9. Clone Brain
 
-- [ ] 9.1 Implement narration template selection based on decision context (exact match, fuzzy match, multiple candidates, inverted data, fallback, all-losing)
-- [ ] 9.2 Implement template interpolation with concrete data (game ID, move count, outcome)
-- [ ] 9.3 Write tests: each decision context produces appropriate narration string, narration is never empty
+- [ ] 9.1 Implement `GameState` data model: canonical_board, zobrist_hash, diffused_hash, move_played, side, game_id, outcome, moves_to_end
+- [ ] 9.2 Implement `GameLog` in-memory store with add/query/backfill operations
+- [ ] 9.3 Implement outcome backfilling: set outcome and moves_to_end for all states in a completed game
+- [ ] 9.4 Implement move weighting: outcome score × efficiency score
+- [ ] 9.5 Implement fallback strategies: random, middle_focus, edge_focus, pile_focus for Connect Four
+- [ ] 9.6 Implement `CloneBrain.selectMove()`: search → weight → delegate to game's move selection strategy → narrate
+- [ ] 9.7 Write tests: weighting prefers wins over draws, fast wins over slow wins, strategy delegation, fallback triggers on empty data
 
-## 10. Integration
+## 10. Narration
 
-- [ ] 10.1 Wire full pipeline: rules → canonicalize → store → search → weight → select → narrate
-- [ ] 10.2 Write integration test: play a short Connect Four game, store states, query clone for a move, verify narration
-- [ ] 10.3 Run `dart analyze` clean, all tests pass
+- [ ] 10.1 Implement narration template selection based on decision context (exact match, fuzzy match, multiple candidates, inverted data, fallback, all-losing)
+- [ ] 10.2 Implement template interpolation with concrete data (game ID, move count, outcome)
+- [ ] 10.3 Write tests: each decision context produces appropriate narration string, narration is never empty
+
+## 11. Integration
+
+- [ ] 11.1 Wire full pipeline: rules → canonicalize → store → search → weight → select (via strategy) → narrate
+- [ ] 11.2 Write integration test: play a short Connect Four game, store states, query clone for a move, verify narration
+- [ ] 11.3 Run `dart analyze` clean, all tests pass

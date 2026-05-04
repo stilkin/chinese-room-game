@@ -15,16 +15,16 @@ The system SHALL weight candidate moves by outcome (win=1.0, draw=0.5, loss=0.0)
 - **WHEN** a candidate state has null outcome (game still in progress or not backfilled)
 - **THEN** it SHALL be excluded from move selection
 
-### Requirement: Move selection from weighted candidates
-The system SHALL select the move played in the highest-weighted candidate state. If multiple candidates suggest the same move, their weights SHALL be aggregated.
+### Requirement: Move selection delegates to game-specific strategy
+The clone brain SHALL pass weighted candidates to the game's `MoveSelectionStrategy` (defined in `GameRules`) to determine the final move. The brain does not implement move selection logic directly — it delegates to the strategy.
 
-#### Scenario: Aggregated move selection
-- **WHEN** 3 candidates suggest column 3 (weights 0.8, 0.7, 0.6) and 1 candidate suggests column 4 (weight 0.9)
-- **THEN** column 3 SHALL be selected (aggregated weight 2.1 > 0.9)
+#### Scenario: Connect Four delegates to vote-by-move
+- **WHEN** the clone brain has weighted candidates for a Connect Four game
+- **THEN** it SHALL pass them to the vote-by-move strategy provided by ConnectFourRules
 
-#### Scenario: Single candidate
-- **WHEN** only one candidate state passes similarity search
-- **THEN** the move from that candidate SHALL be selected
+#### Scenario: Strategy receives all weighted candidates
+- **WHEN** the clone brain invokes the move selection strategy
+- **THEN** the strategy SHALL receive the full list of weighted candidates and the list of legal moves
 
 ### Requirement: Cold-start fallback personalities
 The system SHALL support fallback strategies that fire when the clone has no relevant data (no candidates found or all below a confidence threshold). For Connect Four, the fallback strategies SHALL be: random, middle-focus, edge-focus, and pile-focus.

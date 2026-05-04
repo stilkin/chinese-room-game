@@ -66,6 +66,20 @@ This means every game produces data for both sides, and queries only need to can
 
 *Alternative: canonicalize at query time across all symmetries.* Rejected — stores one canonical form instead of querying N symmetry variants. Simpler and faster.
 
+### Game-specific move selection strategies
+
+Move selection — how to go from weighted candidates to a chosen move — is part of the `GameRules` interface. Two strategies are defined:
+
+**Vote-by-move** (Connect Four, Othello): Candidates each suggest a specific move. Weights are aggregated per move. The move with the highest total weight wins. Works well when the move space is small (7 columns for Connect Four) and multiple candidates naturally converge on the same moves.
+
+**Influence overlay** (Go, Chess): When the move space is large (361 intersections for Go), candidates rarely suggest the exact same move. Instead, the top N candidates' diffusion maps are weighted by outcome/efficiency and averaged into a **target influence map** — a heat map of "where good things happen." Each legal move is scored by its value in the target map. The move in the hottest region wins. This captures spatial clustering: three candidates playing *near* each other in a good region produce one strong signal instead of three weak ones.
+
+Connect Four implements vote-by-move. The influence overlay interface is defined but only implemented for future games.
+
+*Alternative: always use vote-by-move.* Rejected — for Go with 200+ legal moves, candidates almost never agree on an exact intersection. Spatial clustering of strategic intent is lost. The influence overlay recovers it cheaply (one lookup per legal move in the target map).
+
+*Alternative: compute full diffusion per candidate move to evaluate resulting positions.* Rejected — too expensive for large boards (200 diffusion computations per Go turn). Looking up each legal move's value in the pre-averaged target map achieves the same effect with a single averaging pass plus O(legal_moves) lookups.
+
 ### Narration as template selection, not generation
 
 Narration picks from a set of factual templates based on the decision context (exact match found, fuzzy match, multiple candidates, no data, all-losing data). Templates reference concrete data: game ID, move count, outcome. No LLM or generative text.
