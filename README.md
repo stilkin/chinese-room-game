@@ -1,4 +1,4 @@
-# Clone Wars
+# Pi-Ying
 
 A mobile game where you play classic board games against an AI "clone" that learns exclusively from your own past games. The clone starts bad and improves as you play more. It narrates every decision it makes, reflecting your own patterns back at you.
 

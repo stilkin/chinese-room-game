@@ -1,6 +1,6 @@
 ## Context
 
-Clone Wars needs a shared game engine that implements the full clone AI pipeline: store board states, find similar positions, weight by outcome, select a move, and narrate the decision. This is a greenfield pure Dart package at `packages/game_engine/` — no existing code, no Flutter dependency.
+Pi-Ying needs a shared game engine that implements the full clone AI pipeline: store board states, find similar positions, weight by outcome, select a move, and narrate the decision. This is a greenfield pure Dart package at `packages/game_engine/` — no existing code, no Flutter dependency.
 
 The engine must be game-agnostic in its core (storage, similarity, weighting, narration) while allowing game-specific modules (rules, diffusion kernels) to be plugged in. Connect Four is the first game; Othello, Chess, and Go follow later.
 

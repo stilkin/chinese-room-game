@@ -1,6 +1,6 @@
 ## Why
 
-The game engine is the foundation of Clone Wars — all game logic, the clone AI brain, and narration live here. It must exist before any app (mobile, web, server) can be built. Building it as a pure Dart package with no Flutter dependency ensures it's testable standalone and reusable across all targets.
+The game engine is the foundation of Pi-Ying — all game logic, the clone AI brain, and narration live here. It must exist before any app (mobile, web, server) can be built. Building it as a pure Dart package with no Flutter dependency ensures it's testable standalone and reusable across all targets.
 
 ## What Changes
 

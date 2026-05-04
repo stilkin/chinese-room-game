@@ -1,7 +1,7 @@
 schema: spec-driven
 
 context: |
-  Project: Clone Wars — a mobile game where players play classic board games
+  Project: Pi-Ying — a mobile game where players play classic board games
   against an AI "clone" that learns from their own past games using case-based
   reasoning (no neural networks or minimax). The clone narrates every decision.
   First game is Connect Four, with Othello, Chess, and Go on the roadmap.

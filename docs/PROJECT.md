@@ -1,4 +1,4 @@
-# Clone Wars — Play Against Yourself
+# Pi-Ying — Play Against Yourself
 
 ## Project Vision
 
