@@ -69,11 +69,9 @@ List<SimilarityResult> searchSimilar({
   final exactMatches = <SimilarityResult>[];
   for (final state in candidates) {
     if (state.zobristHash == queryZobristHash) {
-      exactMatches.add(SimilarityResult(
-        state: state,
-        distance: 0,
-        isExactMatch: true,
-      ));
+      exactMatches.add(
+        SimilarityResult(state: state, distance: 0, isExactMatch: true),
+      );
     }
   }
 
@@ -93,9 +91,8 @@ List<SimilarityResult> searchSimilar({
     if (filtered.length >= minCandidates) break;
     window *= 2;
     if (window > 1000) {
-      filtered = candidates
-          .where((s) => s.zobristHash != queryZobristHash)
-          .toList();
+      filtered =
+          candidates.where((s) => s.zobristHash != queryZobristHash).toList();
       break;
     }
   }

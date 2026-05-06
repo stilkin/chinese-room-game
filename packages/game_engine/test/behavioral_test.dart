@@ -17,14 +17,22 @@ void main() {
       var leftBoard = Board(6, 7);
       leftBoard = rules.applyMove(leftBoard, 1, 1);
       final leftState = brain.createState(
-        board: leftBoard, movePlayed: 1, ply: 0, side: 1, gameId: 'left',
+        board: leftBoard,
+        movePlayed: 1,
+        ply: 0,
+        side: 1,
+        gameId: 'left',
       );
 
       // Play the mirror move on the right
       var rightBoard = Board(6, 7);
       rightBoard = rules.applyMove(rightBoard, 5, 1);
       final rightState = brain.createState(
-        board: rightBoard, movePlayed: 5, ply: 0, side: 1, gameId: 'right',
+        board: rightBoard,
+        movePlayed: 5,
+        ply: 0,
+        side: 1,
+        gameId: 'right',
       );
 
       // Canonical boards should be identical
@@ -64,13 +72,15 @@ void main() {
           final legal = rules.legalMoves(board);
           final move = legal[rng.nextInt(legal.length)];
           board = rules.applyMove(board, move, side);
-          log.addState(brain.createState(
-            board: board,
-            movePlayed: move,
-            ply: moveCount,
-            side: side,
-            gameId: 'game-$g',
-          ));
+          log.addState(
+            brain.createState(
+              board: board,
+              movePlayed: move,
+              ply: moveCount,
+              side: side,
+              gameId: 'game-$g',
+            ),
+          );
           moveCount++;
           winner = rules.checkWinner(board);
         }
@@ -89,8 +99,11 @@ void main() {
         final decision = brain.selectMove(b, 1);
         if (decision.usedFallback) fallbacks++;
       }
-      expect(fallbacks, lessThan(trials),
-          reason: 'With data, clone should sometimes find candidates');
+      expect(
+        fallbacks,
+        lessThan(trials),
+        reason: 'With data, clone should sometimes find candidates',
+      );
     });
 
     test('clone prefers winning moves over losing moves', () {
@@ -108,13 +121,15 @@ void main() {
       for (var i = 0; i < winMoves.length; i++) {
         final side = i.isEven ? 1 : -1;
         board = rules.applyMove(board, winMoves[i], side);
-        log.addState(brain.createState(
-          board: board,
-          movePlayed: winMoves[i],
-          ply: i,
-          side: side,
-          gameId: 'win-game',
-        ));
+        log.addState(
+          brain.createState(
+            board: board,
+            movePlayed: winMoves[i],
+            ply: i,
+            side: side,
+            gameId: 'win-game',
+          ),
+        );
       }
       log.backfillGame('win-game', 1, winMoves.length);
 
@@ -124,13 +139,15 @@ void main() {
       for (var i = 0; i < loseMoves.length; i++) {
         final side = i.isEven ? 1 : -1;
         board = rules.applyMove(board, loseMoves[i], side);
-        log.addState(brain.createState(
-          board: board,
-          movePlayed: loseMoves[i],
-          ply: i,
-          side: side,
-          gameId: 'lose-game',
-        ));
+        log.addState(
+          brain.createState(
+            board: board,
+            movePlayed: loseMoves[i],
+            ply: i,
+            side: side,
+            gameId: 'lose-game',
+          ),
+        );
       }
       log.backfillGame('lose-game', -1, loseMoves.length);
 
@@ -138,8 +155,11 @@ void main() {
       final queryBoard = Board(6, 7);
       final decision = brain.selectMove(queryBoard, 1);
       expect(decision.usedFallback, false);
-      expect(decision.move, 3,
-          reason: 'Clone should prefer the move from winning games');
+      expect(
+        decision.move,
+        3,
+        reason: 'Clone should prefer the move from winning games',
+      );
     });
   });
 
@@ -172,14 +192,26 @@ void main() {
 
       var board = Board(6, 7);
       board = rules.applyMove(board, 3, 1);
-      log.addState(brain.createState(
-        board: board, movePlayed: 3, ply: 0, side: 1, gameId: 'g1',
-      ));
+      log.addState(
+        brain.createState(
+          board: board,
+          movePlayed: 3,
+          ply: 0,
+          side: 1,
+          gameId: 'g1',
+        ),
+      );
 
       board = rules.applyMove(board, 4, -1);
-      log.addState(brain.createState(
-        board: board, movePlayed: 4, ply: 1, side: -1, gameId: 'g1',
-      ));
+      log.addState(
+        brain.createState(
+          board: board,
+          movePlayed: 4,
+          ply: 1,
+          side: -1,
+          gameId: 'g1',
+        ),
+      );
 
       // Player 1 wins
       log.backfillGame('g1', 1, 2);

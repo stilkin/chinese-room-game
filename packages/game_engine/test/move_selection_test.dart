@@ -24,10 +24,11 @@ void main() {
 
   group('VoteByMoveStrategy', () {
     test('single candidate returns its move', () {
-      final candidates = [
-        WeightedCandidate(_makeState(movePlayed: 3), 1.0),
-      ];
-      expect(strategy.selectMove(candidates, [0, 1, 2, 3, 4, 5, 6], Board(6, 7)), 3);
+      final candidates = [WeightedCandidate(_makeState(movePlayed: 3), 1.0)];
+      expect(
+        strategy.selectMove(candidates, [0, 1, 2, 3, 4, 5, 6], Board(6, 7)),
+        3,
+      );
     });
 
     test('aggregates weights per move', () {
@@ -65,16 +66,12 @@ void main() {
     });
 
     test('returns null when no legal moves', () {
-      final candidates = [
-        WeightedCandidate(_makeState(movePlayed: 3), 1.0),
-      ];
+      final candidates = [WeightedCandidate(_makeState(movePlayed: 3), 1.0)];
       expect(strategy.selectMove(candidates, [], Board(6, 7)), null);
     });
 
     test('returns null when no candidate move is legal', () {
-      final candidates = [
-        WeightedCandidate(_makeState(movePlayed: 3), 1.0),
-      ];
+      final candidates = [WeightedCandidate(_makeState(movePlayed: 3), 1.0)];
       expect(strategy.selectMove(candidates, [0, 1], Board(6, 7)), null);
     });
   });

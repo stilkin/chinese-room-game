@@ -80,28 +80,32 @@ void main() {
   group('GameLog', () {
     test('backfillGame sets outcome and movesToEnd', () {
       final log = GameLog();
-      log.addState(GameState(
-        board: Board(6, 7),
-        zobristHash: 0,
-        diffusedHash: [0],
-        movePlayed: 0,
-        ply: 0,
-        side: 1,
-        gameId: 'g1',
-        totalMaterial: 0,
-        materialBalance: 0,
-      ));
-      log.addState(GameState(
-        board: Board(6, 7),
-        zobristHash: 0,
-        diffusedHash: [0],
-        movePlayed: 1,
-        ply: 1,
-        side: -1,
-        gameId: 'g1',
-        totalMaterial: 0,
-        materialBalance: 0,
-      ));
+      log.addState(
+        GameState(
+          board: Board(6, 7),
+          zobristHash: 0,
+          diffusedHash: [0],
+          movePlayed: 0,
+          ply: 0,
+          side: 1,
+          gameId: 'g1',
+          totalMaterial: 0,
+          materialBalance: 0,
+        ),
+      );
+      log.addState(
+        GameState(
+          board: Board(6, 7),
+          zobristHash: 0,
+          diffusedHash: [0],
+          movePlayed: 1,
+          ply: 1,
+          side: -1,
+          gameId: 'g1',
+          totalMaterial: 0,
+          materialBalance: 0,
+        ),
+      );
 
       log.backfillGame('g1', 1, 2);
 
@@ -113,30 +117,34 @@ void main() {
 
     test('statesWithOutcome excludes unfinished games', () {
       final log = GameLog();
-      log.addState(GameState(
-        board: Board(6, 7),
-        zobristHash: 0,
-        diffusedHash: [0],
-        movePlayed: 0,
-        ply: 0,
-        side: 1,
-        gameId: 'g1',
-        totalMaterial: 0,
-        materialBalance: 0,
-        outcome: 1,
-        movesToEnd: 3,
-      ));
-      log.addState(GameState(
-        board: Board(6, 7),
-        zobristHash: 0,
-        diffusedHash: [0],
-        movePlayed: 0,
-        ply: 0,
-        side: 1,
-        gameId: 'g2',
-        totalMaterial: 0,
-        materialBalance: 0,
-      ));
+      log.addState(
+        GameState(
+          board: Board(6, 7),
+          zobristHash: 0,
+          diffusedHash: [0],
+          movePlayed: 0,
+          ply: 0,
+          side: 1,
+          gameId: 'g1',
+          totalMaterial: 0,
+          materialBalance: 0,
+          outcome: 1,
+          movesToEnd: 3,
+        ),
+      );
+      log.addState(
+        GameState(
+          board: Board(6, 7),
+          zobristHash: 0,
+          diffusedHash: [0],
+          movePlayed: 0,
+          ply: 0,
+          side: 1,
+          gameId: 'g2',
+          totalMaterial: 0,
+          materialBalance: 0,
+        ),
+      );
 
       expect(log.statesWithOutcome(), hasLength(1));
     });

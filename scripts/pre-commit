@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Running dart format check..."
+dart format --set-exit-if-changed packages/game_engine/
+
+echo "Running dart analyze..."
+dart analyze packages/game_engine/

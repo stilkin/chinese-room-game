@@ -1,5 +1,3 @@
-library game_engine;
-
 export 'src/board.dart';
 export 'src/canonicalize.dart';
 export 'src/clone_brain.dart';

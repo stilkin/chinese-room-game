@@ -38,8 +38,8 @@ class CloneBrain {
     required this.log,
     this.fallback = FallbackStrategy.random,
     Random? random,
-  })  : _zobristTable = ZobristTable.forGame(rules),
-        _random = random ?? Random();
+  }) : _zobristTable = ZobristTable.forGame(rules),
+       _random = random ?? Random();
 
   ZobristTable get zobristTable => _zobristTable;
 

@@ -90,7 +90,8 @@ void main() {
         while (winner == null && rules.legalMoves(board).isNotEmpty) {
           final side = moveCount.isEven ? 1 : -1;
           final legal = rules.legalMoves(board);
-          final move = legal[Random(gameNum * 100 + moveCount).nextInt(legal.length)];
+          final move =
+              legal[Random(gameNum * 100 + moveCount).nextInt(legal.length)];
           board = rules.applyMove(board, move, side);
           moveCount++;
 
@@ -105,7 +106,7 @@ void main() {
           winner = rules.checkWinner(board);
         }
 
-        final outcome = winner == null ? 0 : winner;
+        final outcome = winner ?? 0;
         log.backfillGame(gameId, outcome, moveCount);
       }
 

@@ -40,28 +40,32 @@ class ConnectFourRules extends GameRules {
       for (var c = 0; c < cols; c++) {
         final v = board.get(r, c);
         if (v == 0) continue;
-        // Horizontal
         if (c + 3 < cols &&
             v == board.get(r, c + 1) &&
             v == board.get(r, c + 2) &&
-            v == board.get(r, c + 3)) return v;
-        // Vertical
+            v == board.get(r, c + 3)) {
+          return v;
+        }
         if (r + 3 < rows &&
             v == board.get(r + 1, c) &&
             v == board.get(r + 2, c) &&
-            v == board.get(r + 3, c)) return v;
-        // Diagonal down-right
+            v == board.get(r + 3, c)) {
+          return v;
+        }
         if (r + 3 < rows &&
             c + 3 < cols &&
             v == board.get(r + 1, c + 1) &&
             v == board.get(r + 2, c + 2) &&
-            v == board.get(r + 3, c + 3)) return v;
-        // Diagonal down-left
+            v == board.get(r + 3, c + 3)) {
+          return v;
+        }
         if (r + 3 < rows &&
             c - 3 >= 0 &&
             v == board.get(r + 1, c - 1) &&
             v == board.get(r + 2, c - 2) &&
-            v == board.get(r + 3, c - 3)) return v;
+            v == board.get(r + 3, c - 3)) {
+          return v;
+        }
       }
     }
     // Check draw: no empty cells
@@ -110,10 +114,7 @@ class ConnectFourDiffusion implements DiffusionKernel {
             for (final sign in const [1, -1]) {
               final nr = r + dir[0] * sign;
               final nc = c + dir[1] * sign;
-              if (nr >= 0 &&
-                  nr < board.rows &&
-                  nc >= 0 &&
-                  nc < board.cols) {
+              if (nr >= 0 && nr < board.rows && nc >= 0 && nc < board.cols) {
                 next[nr][nc] += v * _attenuation;
               }
             }

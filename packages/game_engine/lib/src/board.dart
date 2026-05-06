@@ -6,12 +6,14 @@ class Board {
   final List<List<int>> cells;
 
   Board(this.rows, this.cols)
-      : cells = List.generate(rows, (_) => List.filled(cols, 0));
+    : cells = List.generate(rows, (_) => List.filled(cols, 0));
 
   Board.from(List<List<int>> source)
-      : rows = source.length,
-        cols = source[0].length,
-        cells = [for (final row in source) [...row]];
+    : rows = source.length,
+      cols = source[0].length,
+      cells = [
+        for (final row in source) [...row],
+      ];
 
   Int8List get flat {
     final result = Int8List(rows * cols);

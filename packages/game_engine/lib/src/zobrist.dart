@@ -58,7 +58,13 @@ class ZobristTable {
     return hash;
   }
 
-  int updateHash(int currentHash, int row, int col, int oldValue, int newValue) {
+  int updateHash(
+    int currentHash,
+    int row,
+    int col,
+    int oldValue,
+    int newValue,
+  ) {
     if (oldValue != 0) {
       final entries = _table[oldValue];
       if (entries != null) {
