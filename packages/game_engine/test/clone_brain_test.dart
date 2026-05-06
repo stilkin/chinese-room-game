@@ -68,6 +68,7 @@ void main() {
         zobristHash: 0,
         diffusedHash: [0],
         movePlayed: 3,
+        ply: 0,
         side: 1,
         gameId: 'gWin',
         totalMaterial: 1,
@@ -80,6 +81,7 @@ void main() {
         zobristHash: 0,
         diffusedHash: [0],
         movePlayed: 4,
+        ply: 0,
         side: 1,
         gameId: 'gDraw',
         totalMaterial: 1,
@@ -92,6 +94,7 @@ void main() {
         zobristHash: 0,
         diffusedHash: [0],
         movePlayed: 5,
+        ply: 0,
         side: 1,
         gameId: 'gLoss',
         totalMaterial: 1,
@@ -128,6 +131,7 @@ void main() {
       final state = brain.createState(
         board: board,
         movePlayed: 3,
+        ply: 0,
         side: 1,
         gameId: 'g1',
       );
@@ -152,6 +156,7 @@ void main() {
         final state = brain.createState(
           board: current,
           movePlayed: moves[i],
+          ply: i,
           side: side,
           gameId: 'g1',
         );

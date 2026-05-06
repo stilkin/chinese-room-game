@@ -7,6 +7,7 @@ GameState _makeState({int movePlayed = 0}) {
     zobristHash: 0,
     diffusedHash: [0],
     movePlayed: movePlayed,
+    ply: 0,
     side: 1,
     gameId: 'g1',
     totalMaterial: 0,

@@ -5,6 +5,7 @@ class GameState {
   final int zobristHash;
   final List<int> diffusedHash;
   final int movePlayed;
+  final int ply;
   final int side;
   final String gameId;
   final int totalMaterial;
@@ -17,6 +18,7 @@ class GameState {
     required this.zobristHash,
     required this.diffusedHash,
     required this.movePlayed,
+    required this.ply,
     required this.side,
     required this.gameId,
     required this.totalMaterial,
@@ -40,7 +42,7 @@ class GameLog {
       if (state.gameId != gameId) continue;
       final sideOutcome = state.side == 1 ? outcome : -outcome;
       state.outcome = sideOutcome;
-      state.movesToEnd = totalMoves - state.movePlayed;
+      state.movesToEnd = totalMoves - state.ply;
     }
   }
 

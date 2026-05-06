@@ -23,6 +23,7 @@ void main() {
         final state = brain.createState(
           board: board,
           movePlayed: moves[i],
+          ply: i,
           side: side,
           gameId: 'game-1',
         );
@@ -96,6 +97,7 @@ void main() {
           final state = brain.createState(
             board: board,
             movePlayed: move,
+            ply: moveCount - 1,
             side: side,
             gameId: gameId,
           );

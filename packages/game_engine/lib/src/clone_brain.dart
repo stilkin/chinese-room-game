@@ -46,6 +46,7 @@ class CloneBrain {
   GameState createState({
     required Board board,
     required int movePlayed,
+    required int ply,
     required int side,
     required String gameId,
   }) {
@@ -57,6 +58,7 @@ class CloneBrain {
       zobristHash: canonical.zobristHash,
       diffusedHash: diffusedHash,
       movePlayed: movePlayed,
+      ply: ply,
       side: side,
       gameId: gameId,
       totalMaterial: computeTotalMaterial(canonical.board),
