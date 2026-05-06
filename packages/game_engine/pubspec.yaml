@@ -1,0 +1,11 @@
+name: game_engine
+description: Pi-Ying game engine — board representation, rules, clone brain, similarity search, and narration.
+publish_to: none
+
+environment:
+  sdk: ^3.7.0
+
+resolution: workspace
+
+dev_dependencies:
+  test: ^1.25.0
