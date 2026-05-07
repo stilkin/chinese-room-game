@@ -67,8 +67,8 @@
 
 ## 9. Integration
 
-- [ ] 9.1 Manual test: play a full game against the clone, verify narration appears, post-game shows correct outcome
-- [ ] 9.2 Manual test: change fallback personality in settings, start a new game with empty data, verify fallback is used
-- [ ] 9.3 Manual test: delete all game logs, verify clone resets and games-played count is 0
-- [ ] 9.4 Manual test: close and reopen the app, verify game data persists and clone remembers past games
+- [x] 9.1 Manual test: play a full game against the clone, verify narration appears, post-game shows correct outcome
+- [x] 9.2 Manual test: change fallback personality in settings, start a new game with empty data, verify fallback is used
+- [x] 9.3 Manual test: delete all game logs, verify clone resets and games-played count is 0
+- [x] 9.4 Manual test: close and reopen the app, verify game data persists and clone remembers past games
 - [x] 9.5 Run `flutter analyze` clean, all automated tests pass (19 mobile tests + 91 engine tests)
