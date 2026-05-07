@@ -1,4 +1,6 @@
 import 'board.dart';
+import 'diffusion.dart';
+import 'game_state.dart';
 import 'zobrist.dart';
 
 class CanonicalResult {
@@ -74,5 +76,27 @@ CanonicalResult canonicalize(Board board, int side, ZobristTable table) {
     zobristHash: hash,
     wasMirrored: mirrored,
     wasPerspectiveFlipped: perspectiveFlipped,
+  );
+}
+
+// Mirror choice in canonicalize is computed before perspective flip and is
+// sign-asymmetric, so canonicalize(B, +side) and canonicalize(B, -side) make
+// the same mirror choice. Their canonical boards differ only by perspective
+// flip, so inverting a canonical state is exactly flipPerspective on the
+// stored board — no need to re-run canonicalize.
+GameState invertState(GameState s, ZobristTable table, DiffusionKernel kernel) {
+  final invertedBoard = flipPerspective(s.board);
+  return GameState(
+    board: invertedBoard,
+    zobristHash: table.hashBoard(invertedBoard),
+    diffusedHash: influenceMapToBitHash(kernel.diffuse(invertedBoard)),
+    movePlayed: s.movePlayed,
+    ply: s.ply,
+    side: -s.side,
+    gameId: s.gameId,
+    totalMaterial: s.totalMaterial,
+    materialBalance: -s.materialBalance,
+    outcome: s.outcome,
+    movesToEnd: s.movesToEnd,
   );
 }

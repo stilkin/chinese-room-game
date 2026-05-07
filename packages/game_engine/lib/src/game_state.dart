@@ -49,4 +49,19 @@ class GameLog {
   List<GameState> statesWithOutcome() {
     return _states.where((s) => s.outcome != null).toList();
   }
+
+  List<GameState> replaceStatesForGame(
+    String gameId,
+    GameState Function(GameState) transform,
+  ) {
+    final replaced = <GameState>[];
+    for (var i = 0; i < _states.length; i++) {
+      final s = _states[i];
+      if (s.gameId != gameId) continue;
+      final next = transform(s);
+      _states[i] = next;
+      replaced.add(next);
+    }
+    return replaced;
+  }
 }

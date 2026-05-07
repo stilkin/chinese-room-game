@@ -1,21 +1,22 @@
 ## 1. Engine: invertState helper
 
-- [ ] 1.1 Add `GameState invertState(GameState s, ZobristTable table, DiffusionKernel kernel)` to `packages/game_engine/lib/src/canonicalize.dart`. Step 1: recover an "after mirror" representative (negate via `flipPerspective` if `s.side == -1`). Step 2: `canonicalize(afterMirror, -s.side, table)` — full pipeline. Step 3: re-diffuse + threshold for `diffusedHash`. Build a new `GameState` with the new board/hashes, flipped `side` and `materialBalance`, preserved `movePlayed` / `ply` / `gameId` / `outcome` / `movesToEnd`.
-- [ ] 1.2 Re-export `invertState` from `packages/game_engine/lib/game_engine.dart`.
-- [ ] 1.3 Unit tests in `packages/game_engine/test/canonicalize_test.dart`: side flips, materialBalance sign flips, metadata preserved, double-inversion equals original (for canonical inputs), Zobrist and diffused-bit hash recomputed correctly.
+- [x] 1.1 Add `GameState invertState(GameState s, ZobristTable table, DiffusionKernel kernel)` to `packages/game_engine/lib/src/canonicalize.dart`. Implementation: `flipPerspective(s.board)` produces the inverted canonical board (since canonicalize's mirror choice is computed pre-flip and depends only on the input, the canonical-board pair `canonicalize(B, +s)` and `canonicalize(B, -s)` differ only by a perspective flip). Recompute `zobristHash` via `table.hashBoard` and `diffusedHash` via the kernel. Build a new `GameState` with the new board/hashes, flipped `side` and `materialBalance`, preserved `movePlayed` / `ply` / `gameId` / `outcome` / `movesToEnd`.
+- [x] 1.2 No new export needed — `canonicalize.dart` is already re-exported via `packages/game_engine/lib/game_engine.dart`.
+- [x] 1.3 Unit tests in `packages/game_engine/test/canonicalize_test.dart`: side flips, materialBalance sign flips, metadata preserved, double-inversion equals original (for canonical inputs), Zobrist hash matches `canonicalize(displayBoard, -side).zobristHash`, diffused-bit hash matches a fresh recompute on the inverted board.
 
 ## 2. Engine: behavioral coverage
 
-- [ ] 2.1 Add a behavioral test in `packages/game_engine/test/behavioral_test.dart`: simulate one or two player-won games, run `invertState` on the player's states (mimicking what the app would do at backfill), then have the clone query a fresh game's first move. Expect a non-fallback decision derived from the inverted player states. Compare against a control run without inversion (expect fallback).
+- [x] 2.1 Add behavioral tests in `packages/game_engine/test/behavioral_test.dart`: a control test (no inversion → bot has zero winning candidates) and a post-inversion test (after full-game inversion of a synthetic player-won game, the bot's winning-candidate count equals the player's row count, the clone rows flipped sides too, and a mid-game query in the bot's POV finds the player's stacking move as a candidate).
+- [x] 2.2 Add a `GameLog.replaceStatesForGame(gameId, transform)` helper in `packages/game_engine/lib/src/game_state.dart` that walks every row of a game and replaces them in place via the transform.
 
 ## 3. Mobile app: backfill orchestration
 
-- [ ] 3.1 In `apps/mobile/lib/src/db/database_service.dart`, add `Future<List<GameState>> queryStatesForGameAndSide(String gameId, int side)` and `Future<void> deleteStatesForGameAndSide(String gameId, int side)` (used together to support delete-then-reinsert).
-- [ ] 3.2 In `apps/mobile/lib/src/state/game_notifier.dart::_endGame`, after the existing backfill calls, branch on `winner`. If `winner == 1` (player won): walk the in-memory log for `_gameId` rows where `side == 1`, replace each with `invertState(s, _brain.zobristTable, rules.diffusionKernel)`. Then in a single SQL transaction, query those player-side rows from SQLite, delete them, and insert their inversions.
-- [ ] 3.3 Update `game_notifier_test.dart` expectations: in the player-wins test, after `_endGame`, the persisted player-side rows SHALL have `side=-1` and `outcome=+1`. In the bot-wins test, no inversion occurs (rows unchanged).
+- [x] 3.1 In `apps/mobile/lib/src/db/database_service.dart`, extract `_gameStateColumns(s)` (shared by `insertGameState` and the bulk swap) and add `replaceAllStatesForGameAtomic(gameId, replacements)` which deletes every row of the game and inserts the replacements inside one transaction.
+- [x] 3.2 In `apps/mobile/lib/src/state/game_notifier.dart::_endGame`, after the existing backfill calls, branch on `winner`. If `winner == 1`: call `_invertCurrentGameToBotPerspective`, which uses `log.replaceStatesForGame` to capture the inverted rows and `db.replaceAllStatesForGameAtomic` to swap them in SQLite atomically.
+- [x] 3.3 Update `game_notifier_test.dart` expectations: in the player-wins test, after `_endGame`, the persisted rows SHALL split into 4 winning rows (`side=-1, outcome=+1`) and 3 losing rows (`side=+1, outcome=-1`), and the in-memory log SHALL match. In the bot-wins test, no inversion occurs — player rows stay at `side=+1, outcome=-1` and clone rows stay at `side=-1, outcome=+1`.
 
 ## 4. Verification
 
-- [ ] 4.1 `dart analyze` and `dart test` pass in `packages/game_engine/`.
-- [ ] 4.2 `flutter analyze` and `flutter test` pass in `apps/mobile/`.
-- [ ] 4.3 Manual smoke on device: play and lose 2-3 games to the clone, then start a fresh game. The clone narration should leave fallback behind faster than before — it now has player-derived data to pull from.
+- [x] 4.1 `dart analyze` and `dart test` pass in `packages/game_engine/`.
+- [x] 4.2 `flutter analyze` and `flutter test` pass in `apps/mobile/`.
+- [ ] 4.3 Manual smoke on device: play and win 2-3 games against the clone, then start a fresh game. The clone narration should leave fallback behind faster than before — it now has player-derived data to pull from.

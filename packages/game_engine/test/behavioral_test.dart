@@ -163,6 +163,105 @@ void main() {
     });
   });
 
+  group('Loss inversion', () {
+    // Build a synthetic game where the player wins by stacking col 3.
+    // Player plays col 3 four times (sides +1), clone plays col 0 between
+    // (sides -1). Player wins on the 4th vertical piece at ply 6.
+    void synthesizeAndStorePlayerWin(GameLog log, CloneBrain brain) {
+      var board = Board(6, 7);
+      final moves = [
+        (col: 3, side: 1),
+        (col: 0, side: -1),
+        (col: 3, side: 1),
+        (col: 0, side: -1),
+        (col: 3, side: 1),
+        (col: 0, side: -1),
+        (col: 3, side: 1),
+      ];
+      for (var i = 0; i < moves.length; i++) {
+        final m = moves[i];
+        board = rules.applyMove(board, m.col, m.side);
+        log.addState(
+          brain.createState(
+            board: board,
+            movePlayed: m.col,
+            ply: i,
+            side: m.side,
+            gameId: 'won',
+          ),
+        );
+      }
+      log.backfillGame('won', 1, moves.length);
+    }
+
+    int countWinningForBot(GameLog log) {
+      return log
+          .statesWithOutcome()
+          .where((s) => s.side == -1 && s.outcome == 1)
+          .length;
+    }
+
+    test(
+      'without inversion, the bot has no winning candidates to learn from',
+      () {
+        final log = GameLog();
+        final brain = CloneBrain(rules: rules, log: log, random: Random(7));
+        synthesizeAndStorePlayerWin(log, brain);
+
+        // The player's winning states sit at side=+1 (in +canonical space). The
+        // bot's own states sit at side=-1 with outcome=-1 (the bot lost). Query
+        // weighting drops loss-weighted rows, so the bot has nothing useful.
+        expect(countWinningForBot(log), 0);
+      },
+    );
+
+    test('after inversion, the whole game lives in bot-perspective space', () {
+      final log = GameLog();
+      final brain = CloneBrain(rules: rules, log: log, random: Random(7));
+      synthesizeAndStorePlayerWin(log, brain);
+
+      // This is exactly what the mobile app does in _endGame when winner==1:
+      // invert every row so the whole game reads as if the bot played it.
+      log.replaceStatesForGame(
+        'won',
+        (s) => invertState(s, brain.zobristTable, rules.diffusionKernel),
+      );
+
+      // Player's 4 winning moves are now in the bot's POV with outcome=+1.
+      expect(countWinningForBot(log), 4);
+
+      // Clone's 3 losing moves flipped too: side=+1, outcome=-1.
+      final losingForOpponent =
+          log.states
+              .where((s) => s.gameId == 'won' && s.side == 1 && s.outcome == -1)
+              .length;
+      expect(losingForOpponent, 3);
+
+      // No row of this game still sits in +canonical-mover-side==+1 space
+      // with outcome=+1 (which is what would have lingered under the old
+      // asymmetric scheme).
+      expect(
+        log.states.any(
+          (s) => s.gameId == 'won' && s.side == 1 && s.outcome == 1,
+        ),
+        false,
+      );
+
+      // And the player's moves are query-reachable: feed the same display
+      // position the bot would face mid-stack and confirm the weighted
+      // candidate is the player's stacking move.
+      var midStack = Board(6, 7);
+      midStack = rules.applyMove(midStack, 3, 1);
+      midStack = rules.applyMove(midStack, 0, -1);
+      midStack = rules.applyMove(midStack, 3, 1);
+      midStack = rules.applyMove(midStack, 0, -1);
+
+      final decision = brain.selectMove(midStack, -1);
+      expect(decision.usedFallback, false);
+      expect(decision.candidatesFound, greaterThan(0));
+    });
+  });
+
   group('Data growth', () {
     test('game states are stored correctly through full pipeline', () {
       final log = GameLog();

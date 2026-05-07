@@ -122,7 +122,26 @@ class GameNotifier extends ChangeNotifier {
     log.backfillGame(_gameId, winner, _ply);
     await db.backfillStates(_gameId, winner, _ply);
     await db.updateGameOutcome(_gameId, winner, _ply);
+
+    if (winner == 1) {
+      await _invertCurrentGameToBotPerspective();
+    }
+
     _gamesPlayed += 1;
+  }
+
+  // On a player win, restore the bot as protagonist: invert every row of the
+  // current game (both sides) so the whole game reads as if the bot played it.
+  // Player rows become side=-1 outcome=+1 (bot's winning trajectory); clone
+  // rows become side=+1 outcome=-1 (the opponent's losing trajectory).
+  Future<void> _invertCurrentGameToBotPerspective() async {
+    final table = _brain.zobristTable;
+    final kernel = rules.diffusionKernel;
+    final inverted = log.replaceStatesForGame(
+      _gameId,
+      (s) => invertState(s, table, kernel),
+    );
+    await db.replaceAllStatesForGameAtomic(_gameId, inverted);
   }
 
   Future<void> setFallback(FallbackStrategy strategy) async {

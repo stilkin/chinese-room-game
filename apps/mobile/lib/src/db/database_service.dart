@@ -104,7 +104,11 @@ class DatabaseService {
   }
 
   Future<void> insertGameState(GameState s) async {
-    await db.insert('game_states', {
+    await db.insert('game_states', _gameStateColumns(s));
+  }
+
+  Map<String, Object?> _gameStateColumns(GameState s) {
+    return {
       'game_id': s.gameId,
       'ply': s.ply,
       'side': s.side,
@@ -118,12 +122,28 @@ class DatabaseService {
       'material_balance': s.materialBalance,
       'outcome': s.outcome,
       'moves_to_end': s.movesToEnd,
-    });
+    };
   }
 
   Future<List<GameState>> loadAllGameStates() async {
     final rows = await db.query('game_states');
     return rows.map(_rowToGameState).toList();
+  }
+
+  Future<void> replaceAllStatesForGameAtomic(
+    String gameId,
+    List<GameState> replacements,
+  ) async {
+    await db.transaction((txn) async {
+      await txn.delete(
+        'game_states',
+        where: 'game_id = ?',
+        whereArgs: [gameId],
+      );
+      for (final s in replacements) {
+        await txn.insert('game_states', _gameStateColumns(s));
+      }
+    });
   }
 
   GameState _rowToGameState(Map<String, Object?> row) {

@@ -138,4 +138,43 @@ void main() {
     expect(await service.loadAllGameStates(), isEmpty);
     expect(await service.getGamesPlayedCount(), 0);
   });
+
+  test(
+    'replaceAllStatesForGameAtomic swaps every row of the game atomically',
+    () async {
+      await service.insertGameState(
+        _state(gameId: 'g1', ply: 0, side: 1, movePlayed: 3),
+      );
+      await service.insertGameState(
+        _state(gameId: 'g1', ply: 1, side: -1, movePlayed: 0),
+      );
+      await service.insertGameState(
+        _state(gameId: 'g1', ply: 2, side: 1, movePlayed: 4),
+      );
+      // Unrelated game must be untouched.
+      await service.insertGameState(
+        _state(gameId: 'g2', ply: 0, side: 1, movePlayed: 5),
+      );
+
+      final replacements = [
+        _state(gameId: 'g1', ply: 0, side: -1, movePlayed: 3),
+        _state(gameId: 'g1', ply: 1, side: 1, movePlayed: 0),
+        _state(gameId: 'g1', ply: 2, side: -1, movePlayed: 4),
+      ];
+
+      await service.replaceAllStatesForGameAtomic('g1', replacements);
+
+      final all = await service.loadAllGameStates();
+      expect(all, hasLength(4));
+
+      final g1Rows = all.where((s) => s.gameId == 'g1').toList()
+        ..sort((a, b) => a.ply.compareTo(b.ply));
+      expect(g1Rows.map((s) => s.side), [-1, 1, -1]);
+      expect(g1Rows.map((s) => s.movePlayed), [3, 0, 4]);
+
+      final g2Rows = all.where((s) => s.gameId == 'g2').toList();
+      expect(g2Rows, hasLength(1));
+      expect(g2Rows.first.side, 1);
+    },
+  );
 }

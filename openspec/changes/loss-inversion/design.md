@@ -27,11 +27,13 @@ We keep the per-move write path simple — store the mover's POV state as today.
 
 *Alternative: write a twin per move (the original v1 of this proposal).* Rejected — doubled row count, asymmetric query coverage (only twin matches mattered for the bot, originals were dead weight), and a subtle mirror-consistency edge case. Backfill-time inversion is cleaner: one row per move, deterministic outcome, full canonical pipeline run on the inverted result.
 
-### Only invert the winning side's states
+### Invert every row of player-won games (not just the winning side)
 
-Both schemes (write-time twin, backfill-time invert) yield the same useful coverage when we only consider the *winning side*. Inverting the losing side's states would just relabel `side` on rows that are already discarded by the bot's outcome weighting (loss → 0 weight), with no benefit. Keep them as-is (inert in the log; can be cleaned up later if storage matters).
+When the player wins, we rewrite the whole game as if the bot played it: the player rows become the bot's *winning* trajectory and the clone rows become the opponent's *losing* trajectory. Every row of the game stays consistent — same side conventions, same outcome semantics, same canonical perspective.
 
-So: **only invert when the player wins**, and **only the player's rows**.
+*Alternative considered: invert only the winning player's rows, leaving the clone's losing rows in place.* Rejected. The argument for the asymmetric scheme was Zobrist-specific: clone rows are weight-zero under the current outcome-based weighting, so inverting them produces no behavioral difference. But that's a contingent property of today's matching system, not a long-term invariant — once we sunset Zobrist for perceptual / diffusion-image matching, "weight-zero in -canonical space" stops being a useful frame, and the asymmetric storage just looks like dead code. Full inversion gives a cleaner, more uniform data model that survives the matching-system rewrite.
+
+When the bot wins, no inversion happens — the standard per-side backfill has already produced the right shape (bot rows: side=-1 outcome=+1; player rows: side=+1 outcome=-1).
 
 ### `invertState` re-runs the full canonicalize pipeline
 
@@ -69,29 +71,27 @@ Step 2 re-canonicalizes from the opposite POV. This is the key: because we go th
 
 Step 3 recomputes the diffused hash on the new canonical. Diffusion is sign-sensitive (the threshold flips on negation) and mirror-sensitive (mirror flips column positions), so neither bit-inversion nor a clever shortcut is sound. Recompute. It's a few hundred ops for Connect Four — trivial.
 
-### Outcome semantics — preserved, not flipped
+### Outcome semantics — preserved per row, not flipped
 
-The inverted state keeps the original's `outcome`. After standard backfill (per-side flip on the originals), a player-win state has `side=+1, outcome=+1`. After inversion, `side=-1` but `outcome=+1` is preserved.
+`invertState` preserves each row's `outcome` field as-is. After standard backfill, a player-win game has player rows at `outcome=+1` and clone rows at `outcome=-1`. After full-game inversion, player rows are `side=-1, outcome=+1` and clone rows are `side=+1, outcome=-1` — the outcome label still tracks "did the side stored in this row's `side` field win?", consistent with the standard backfill convention.
 
-This means the `outcome` field is no longer "from `side`'s POV" in a strict sense. The clearer interpretation: **`outcome` is from the canonical mover's POV**, where the canonical mover's pieces are always `+1` in `state.board`. Since the inversion swaps the canonical board's POV (player's `+1` pieces stay the winner's pieces in the new bot-POV canonical), `outcome=+1` correctly represents "this canonical-mover-pieces side won."
+So under full-game inversion, the `outcome ↔ side` correspondence remains the natural one: a row with `outcome=+1` represents "the side recorded here won this game." No semantic shift, no special interpretation — the game is just stored with sides swapped end-to-end.
 
-The bot's weighting reads `outcome` directly without consulting `side`, so this redefinition is invisible at the call site — the existing weighting code keeps working unchanged.
+The bot's weighting reads `outcome` directly without consulting `side`, so existing weighting code is unaffected.
 
 ### Backfill ordering: standard outcomes first, then invert
 
-`GameLog.backfillGame` keeps its current behavior — sets `outcome` and `movesToEnd` per-side. After it runs, `_endGame` checks the winner. If the player won, it walks the player-side rows for the just-finished game, calls `invertState` on each, and replaces them in both the in-memory log and the database (via delete-then-insert under a transaction).
+`GameLog.backfillGame` keeps its current behavior — sets `outcome` and `movesToEnd` per-side. After it runs, `_endGame` checks the winner. If the player won, it walks **every** row of the just-finished game, calls `invertState` on each, and atomically swaps them in both the in-memory log and the database.
 
 *Alternative: do the inversion inside `backfillGame`.* Rejected — `GameLog` doesn't know about `ZobristTable` or the diffusion kernel, and forcing it to would couple the engine's data model to its hashing/diffusion infrastructure. Orchestration in the notifier keeps `GameLog` a dumb container.
 
-### DB inversion is delete-then-reinsert
+### DB inversion is a single game-scoped delete-then-bulk-insert
 
-The inverted row's `board` blob, Zobrist hash, diffused-hash blob, side, and `materialBalance` all change. Updating that many columns is just as costly as a delete-then-insert, and the latter reuses `insertGameState` directly. Wrap both ops in a single SQLite transaction so the change is atomic.
+The inverted row's `board` blob, Zobrist hash, diffused-hash blob, side, and `materialBalance` all change. Per-row UPDATE for that many columns is just as costly as a delete-then-insert, and the latter reuses the existing column-builder (`_gameStateColumns`). The notifier produces the full set of inverted rows up front, then `replaceAllStatesForGameAtomic(gameId, replacements)` does one game-scoped DELETE plus N inserts inside one SQLite transaction so the swap is atomic.
 
 ## Risks / Trade-offs
 
-**[Outcome semantics shift slightly]** → `outcome` was implicitly "from `side`'s POV." We're moving to "from the canonical mover's POV," which only matters for inverted rows. → Mitigation: documented in the spec; no current call site reads `outcome` together with `side` and would break.
-
-**[Hash recompute on inversion]** → A few hundred extra ops per inverted row, only at backfill. Negligible.
+**[Hash recompute on inversion]** → A few hundred extra ops per inverted row, only at backfill, only on player-won games. Negligible.
 
 **[Old data lacks inversion]** → Games stored before this lands won't get inverted retroactively. Acceptable: the MVP hasn't shipped widely; new games naturally fill in.
 
