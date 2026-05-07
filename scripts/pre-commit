@@ -2,7 +2,10 @@
 set -euo pipefail
 
 echo "Running dart format check..."
-dart format --set-exit-if-changed packages/game_engine/
+dart format --set-exit-if-changed packages/game_engine/ apps/mobile/lib/ apps/mobile/test/
 
-echo "Running dart analyze..."
+echo "Running dart analyze (game_engine)..."
 dart analyze packages/game_engine/
+
+echo "Running flutter analyze (mobile)..."
+(cd apps/mobile && flutter analyze)

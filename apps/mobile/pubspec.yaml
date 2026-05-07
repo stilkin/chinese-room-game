@@ -1,0 +1,28 @@
+name: pi_ying
+description: Pi-Ying mobile app — Connect Four against a learning clone.
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  game_engine:
+    path: ../../packages/game_engine
+  sqflite: ^2.4.0
+  path: ^1.9.0
+  path_provider: ^2.1.4
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  sqflite_common_ffi: ^2.3.0
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
