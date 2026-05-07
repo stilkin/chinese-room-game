@@ -19,4 +19,4 @@
 
 - [x] 4.1 `dart analyze` and `dart test` pass in `packages/game_engine/`.
 - [x] 4.2 `flutter analyze` and `flutter test` pass in `apps/mobile/`.
-- [ ] 4.3 Manual smoke on device: play and win 2-3 games against the clone, then start a fresh game. The clone narration should leave fallback behind faster than before — it now has player-derived data to pull from.
+- [x] 4.3 Manual smoke on device: play and win 2-3 games against the clone, then start a fresh game. The clone narration should leave fallback behind faster than before — it now has player-derived data to pull from.
