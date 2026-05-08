@@ -72,7 +72,7 @@ void main() {
         gameId: 'g1',
       );
 
-      expect(state.diffusedHash, isNotEmpty);
+      expect(state.diffusedImage, isNotEmpty);
       expect(state.movePlayed, 3);
       expect(state.gameId, 'g1');
       expect(state.totalMaterial, greaterThan(0));

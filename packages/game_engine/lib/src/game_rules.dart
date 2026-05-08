@@ -1,6 +1,8 @@
 import 'board.dart';
 import 'diffusion.dart';
+import 'game_state.dart';
 import 'move_selection.dart';
+import 'similarity.dart';
 
 abstract class GameRules {
   int get rows;
@@ -17,4 +19,11 @@ abstract class GameRules {
 
   DiffusionKernel get diffusionKernel;
   MoveSelectionStrategy get moveSelectionStrategy;
+
+  /// Game-specific candidate pre-filter for `searchSimilar`. Returns the
+  /// initial filter; the search loop calls `widened()` on it as needed.
+  CandidateFilter prefilter(GameState query);
+
+  /// Game-specific scorer used by `InfluenceOverlayStrategy`.
+  MoveScorer get moveScorer;
 }

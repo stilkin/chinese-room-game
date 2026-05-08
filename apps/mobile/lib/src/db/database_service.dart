@@ -8,16 +8,16 @@ import 'package:sqflite/sqflite.dart';
 import 'board_codec.dart';
 
 const _kDbName = 'pi_ying.db';
-const _kSchemaVersion = 2;
+const _kSchemaVersion = 3;
 const _kFallbackKey = 'fallback';
 
-const _kCreateGameStatesV2 = '''
+const _kCreateGameStatesV3 = '''
   CREATE TABLE game_states (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     game_id TEXT NOT NULL,
     ply INTEGER NOT NULL,
     move_played INTEGER NOT NULL,
-    diffused_hash BLOB NOT NULL,
+    diffused_image BLOB NOT NULL,
     board BLOB NOT NULL,
     rows INTEGER NOT NULL,
     cols INTEGER NOT NULL,
@@ -60,7 +60,7 @@ class DatabaseService {
               total_moves INTEGER
             )
           ''');
-          await db.execute(_kCreateGameStatesV2);
+          await db.execute(_kCreateGameStatesV3);
           await db.execute(
             'CREATE INDEX idx_game_states_game_id ON game_states(game_id)',
           );
@@ -75,11 +75,14 @@ class DatabaseService {
           ''');
         },
         onUpgrade: (db, oldVersion, newVersion) async {
-          if (oldVersion < 2) {
-            // Schema-incompatible: v1 data was per-row perspective canonicalized,
-            // v2 expects per-game winner-POV. Wipe and recreate.
+          // v1 → v2 was schema-incompatible (per-row perspective → winner-POV).
+          // v2 → v3 is also schema-incompatible (bit-hash column → quantized
+          // image column; bit-hash data isn't comparable under L1). Either
+          // upgrade is destructive: drop game_states, clear games, leave
+          // clone_config alone. Indices are recreated.
+          if (oldVersion < 3) {
             await db.execute('DROP TABLE IF EXISTS game_states');
-            await db.execute(_kCreateGameStatesV2);
+            await db.execute(_kCreateGameStatesV3);
             await db.execute(
               'CREATE INDEX idx_game_states_game_id ON game_states(game_id)',
             );
@@ -127,7 +130,10 @@ class DatabaseService {
       'game_id': s.gameId,
       'ply': s.ply,
       'move_played': s.movePlayed,
-      'diffused_hash': hashListToBlob(s.diffusedHash),
+      'diffused_image': s.diffusedImage.buffer.asUint8List(
+        s.diffusedImage.offsetInBytes,
+        s.diffusedImage.lengthInBytes,
+      ),
       'board': boardToBlob(s.board),
       'rows': s.board.rows,
       'cols': s.board.cols,
@@ -196,10 +202,11 @@ class DatabaseService {
     final rows = row['rows']! as int;
     final cols = row['cols']! as int;
     final board = boardFromBlob(rows, cols, row['board']! as Uint8List);
-    final diffused = hashListFromBlob(row['diffused_hash']! as Uint8List);
+    final imageBlob = row['diffused_image']! as Uint8List;
+    final diffusedImage = Int8List.fromList(imageBlob);
     return GameState(
       board: board,
-      diffusedHash: diffused,
+      diffusedImage: diffusedImage,
       movePlayed: row['move_played']! as int,
       ply: row['ply']! as int,
       gameId: row['game_id']! as String,

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:game_engine/game_engine.dart';
 import 'package:pi_ying/src/db/database_service.dart';
@@ -11,9 +13,13 @@ GameState _state({
   int materialBalance = 0,
 }) {
   final b = board ?? Board(6, 7);
+  // Distinct image so round-trip assertions can detect drift.
+  final image = Int8List.fromList(
+    List<int>.generate(b.rows * b.cols, (i) => ((i * 7) % 31) - 15),
+  );
   return GameState(
     board: b,
-    diffusedHash: const [0x1234567890ABCDEF, 0x0FEDCBA987654321],
+    diffusedImage: image,
     movePlayed: movePlayed,
     ply: ply,
     gameId: gameId,
@@ -52,7 +58,7 @@ void main() {
     expect(s.gameId, 'g1');
     expect(s.ply, 0);
     expect(s.movePlayed, 3);
-    expect(s.diffusedHash, original.diffusedHash);
+    expect(s.diffusedImage, original.diffusedImage);
     expect(s.board, original.board);
   });
 

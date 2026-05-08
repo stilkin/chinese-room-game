@@ -12,11 +12,24 @@ Board flipPerspective(Board board) {
   return result;
 }
 
+/// Left-right mirror: column c maps to column (cols - 1 - c). Rows unchanged.
+/// Used at query time to recover mirror-equivalent matches without storing a
+/// canonical mirror.
+Board mirrorBoard(Board board) {
+  final result = Board(board.rows, board.cols);
+  for (var r = 0; r < board.rows; r++) {
+    for (var c = 0; c < board.cols; c++) {
+      result.set(r, board.cols - 1 - c, board.get(r, c));
+    }
+  }
+  return result;
+}
+
 GameState invertState(GameState s, DiffusionKernel kernel) {
   final inv = flipPerspective(s.board);
   return GameState(
     board: inv,
-    diffusedHash: influenceMapToBitHash(kernel.diffuse(inv)),
+    diffusedImage: quantizeInfluenceMap(kernel.diffuse(inv)),
     movePlayed: s.movePlayed,
     ply: s.ply,
     gameId: s.gameId,

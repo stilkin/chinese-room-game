@@ -1,7 +1,9 @@
 import '../board.dart';
 import '../diffusion.dart';
 import '../game_rules.dart';
+import '../game_state.dart';
 import '../move_selection.dart';
+import '../similarity.dart';
 
 class ConnectFourRules extends GameRules {
   @override
@@ -81,7 +83,48 @@ class ConnectFourRules extends GameRules {
   DiffusionKernel get diffusionKernel => ConnectFourDiffusion();
 
   @override
-  MoveSelectionStrategy get moveSelectionStrategy => VoteByMoveStrategy();
+  MoveSelectionStrategy get moveSelectionStrategy =>
+      const InfluenceOverlayStrategy(ConnectFourMoveScorer());
+
+  @override
+  CandidateFilter prefilter(GameState query) => ConnectFourFilter(query.ply, 2);
+
+  @override
+  MoveScorer get moveScorer => const ConnectFourMoveScorer();
+}
+
+/// Accept candidates whose ply differs from the query's by at most `window`.
+/// Connect Four's `totalMaterial` equals `ply` (every move adds one piece, no
+/// captures), so this is the natural one-axis filter.
+class ConnectFourFilter implements CandidateFilter {
+  final int queryPly;
+  final int window;
+  const ConnectFourFilter(this.queryPly, this.window);
+
+  @override
+  bool matches(GameState candidate) =>
+      (candidate.ply - queryPly).abs() <= window;
+
+  @override
+  CandidateFilter widened() =>
+      ConnectFourFilter(queryPly, window == 0 ? 1 : window * 2);
+}
+
+/// Score a column move by the heatmap value at the cell where gravity would
+/// drop the piece. Full columns score `-double.infinity` so they can never be
+/// chosen.
+class ConnectFourMoveScorer implements MoveScorer {
+  const ConnectFourMoveScorer();
+
+  @override
+  double scoreMove(int move, Board currentBoard, List<List<double>> heatmap) {
+    for (var r = currentBoard.rows - 1; r >= 0; r--) {
+      if (currentBoard.get(r, move) == 0) {
+        return heatmap[r][move];
+      }
+    }
+    return -double.infinity;
+  }
 }
 
 class ConnectFourDiffusion implements DiffusionKernel {

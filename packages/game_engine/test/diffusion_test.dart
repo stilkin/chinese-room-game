@@ -66,27 +66,52 @@ void main() {
     });
   });
 
-  group('influenceMapToBitHash', () {
-    test('all-zero influence produces zero hash', () {
+  group('quantizeInfluenceMap', () {
+    test('all-zero influence produces all-zero image', () {
       final influence = List.generate(6, (_) => List.filled(7, 0.0));
-      final hash = influenceMapToBitHash(influence);
-      expect(hash, [0]);
+      final image = quantizeInfluenceMap(influence);
+      expect(image.length, 42);
+      expect(image.every((v) => v == 0), isTrue);
     });
 
-    test('positive values set bits to 1', () {
+    test('row-major flatten preserves cell positions', () {
       final influence = List.generate(6, (_) => List.filled(7, 0.0));
-      influence[0][0] = 1.0;
-      final hash = influenceMapToBitHash(influence);
-      expect(hash[0] & 1, 1);
+      influence[0][0] = 5.0;
+      influence[5][6] = -3.0;
+      final image = quantizeInfluenceMap(influence);
+      expect(image[0], 5);
+      expect(image[5 * 7 + 6], -3);
     });
 
-    test('identical influence maps produce identical hashes', () {
+    test('rounds to nearest integer', () {
+      final influence = List.generate(1, (_) => List.filled(4, 0.0));
+      influence[0][0] = 1.4;
+      influence[0][1] = 1.5;
+      influence[0][2] = -1.4;
+      influence[0][3] = -1.5;
+      final image = quantizeInfluenceMap(influence);
+      expect(image[0], 1);
+      expect(image[1], 2);
+      expect(image[2], -1);
+      expect(image[3], -2);
+    });
+
+    test('clamps to Int8 range', () {
+      final influence = List.generate(1, (_) => List.filled(2, 0.0));
+      influence[0][0] = 200.0;
+      influence[0][1] = -200.0;
+      final image = quantizeInfluenceMap(influence);
+      expect(image[0], 127);
+      expect(image[1], -128);
+    });
+
+    test('identical influence maps produce identical images', () {
       final board = Board(6, 7);
       board.set(5, 3, 1);
       final kernel = ConnectFourDiffusion();
-      final h1 = influenceMapToBitHash(kernel.diffuse(board));
-      final h2 = influenceMapToBitHash(kernel.diffuse(board));
-      expect(h1, h2);
+      final i1 = quantizeInfluenceMap(kernel.diffuse(board));
+      final i2 = quantizeInfluenceMap(kernel.diffuse(board));
+      expect(i1, i2);
     });
   });
 }

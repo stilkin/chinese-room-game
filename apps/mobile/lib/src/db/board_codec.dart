@@ -14,17 +14,3 @@ Board boardFromBlob(int rows, int cols, Uint8List blob) {
   );
   return Board.from(cells);
 }
-
-Uint8List hashListToBlob(List<int> hashes) {
-  final bytes = ByteData(hashes.length * 8);
-  for (var i = 0; i < hashes.length; i++) {
-    bytes.setInt64(i * 8, hashes[i], Endian.little);
-  }
-  return bytes.buffer.asUint8List();
-}
-
-List<int> hashListFromBlob(Uint8List blob) {
-  final bytes = ByteData.sublistView(blob);
-  final count = blob.length ~/ 8;
-  return List<int>.generate(count, (i) => bytes.getInt64(i * 8, Endian.little));
-}

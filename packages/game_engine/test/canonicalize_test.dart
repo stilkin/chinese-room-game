@@ -108,17 +108,17 @@ void main() {
       expect(inv.totalMaterial, s.totalMaterial);
     });
 
-    test('diffused hash matches a fresh recompute on the inverted board', () {
+    test('diffused image matches a fresh recompute on the inverted board', () {
       var board = Board(6, 7);
       board = rules.applyMove(board, 1, 1);
       board = rules.applyMove(board, 5, -1);
       final s = buildState(displayBoard: board, movePlayed: 5, ply: 1);
 
       final inv = invertState(s, rules.diffusionKernel);
-      final fresh = influenceMapToBitHash(
+      final fresh = quantizeInfluenceMap(
         rules.diffusionKernel.diffuse(inv.board),
       );
-      expect(inv.diffusedHash, fresh);
+      expect(inv.diffusedImage, fresh);
     });
 
     test('double inversion is the identity', () {
@@ -143,7 +143,7 @@ void main() {
           expect(twice.board.get(r, c), s.board.get(r, c));
         }
       }
-      expect(twice.diffusedHash, s.diffusedHash);
+      expect(twice.diffusedImage, s.diffusedImage);
       expect(twice.materialBalance, s.materialBalance);
     });
   });

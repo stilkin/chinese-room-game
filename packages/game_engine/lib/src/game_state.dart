@@ -1,8 +1,10 @@
+import 'dart:typed_data';
+
 import 'board.dart';
 
 class GameState {
   final Board board;
-  final List<int> diffusedHash;
+  final Int8List diffusedImage;
   final int movePlayed;
   final int ply;
   final String gameId;
@@ -13,7 +15,7 @@ class GameState {
 
   GameState({
     required this.board,
-    required this.diffusedHash,
+    required this.diffusedImage,
     required this.movePlayed,
     required this.ply,
     required this.gameId,

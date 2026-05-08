@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'board.dart';
 import 'canonicalize.dart';
@@ -47,7 +48,7 @@ class CloneBrain {
     final influence = rules.diffusionKernel.diffuse(board);
     return GameState(
       board: board,
-      diffusedHash: influenceMapToBitHash(influence),
+      diffusedImage: quantizeInfluenceMap(influence),
       movePlayed: movePlayed,
       ply: ply,
       gameId: gameId,
@@ -72,96 +73,159 @@ class CloneBrain {
       return _fallbackDecision(legal, currentBoard);
     }
 
-    // Query A: assume bot is the eventual winner. Bot's pieces become +1
-    // in the query, matching bot-won games' winner-POV stored canonicals.
-    // outcome=+1 rows there = bot played this move and won.
-    final aResults = _searchOnce(flipPerspective(currentBoard), completed);
+    // Four queries: perspective × mirror. Q_A and Q_B target different
+    // populations of stored rows via the outcome filter — Q_A finds rows
+    // where the +1 mover won (winner-mover candidates), Q_B finds rows where
+    // the +1 mover lost (loser-mover candidates). Each query's orientation
+    // (flipped vs not) makes its target population L1-near-aligned. All
+    // candidates contribute with positive weight; the candidate image's
+    // natural sign carries the win/loss lesson.
+    final flipped = flipPerspective(currentBoard);
+    final mirroredFlipped = mirrorBoard(flipped);
+    final mirroredQuery = mirrorBoard(currentBoard);
 
-    // Query B: assume bot is the eventual loser. Bot's pieces stay -1 in the
-    // query, matching player-won games' winner-POV stored canonicals.
-    // outcome=-1 rows there = bot played this move and lost.
-    final bResults = _searchOnce(currentBoard, completed);
-
-    final weighted = <WeightedCandidate>[];
-    for (final r in aResults) {
-      if (r.state.outcome != 1) continue;
-      final w = _weightFor(r, sign: 1);
-      if (w != 0) weighted.add(WeightedCandidate(r.state, w));
+    final all = <WeightedCandidate>[];
+    var totalResults = 0;
+    for (final q in [
+      _Query(flipped, requiredOutcome: 1, mirror: false),
+      _Query(mirroredFlipped, requiredOutcome: 1, mirror: true),
+      _Query(currentBoard, requiredOutcome: -1, mirror: false),
+      _Query(mirroredQuery, requiredOutcome: -1, mirror: true),
+    ]) {
+      final results = _runQuery(q, completed);
+      totalResults += results.length;
+      all.addAll(results);
     }
-    for (final r in bResults) {
-      if (r.state.outcome != -1) continue;
-      final w = _weightFor(r, sign: -1);
-      if (w != 0) weighted.add(WeightedCandidate(r.state, w));
-    }
 
-    if (weighted.isEmpty) {
+    if (all.isEmpty) {
       return _fallbackDecision(legal, currentBoard);
     }
 
-    final selectedMove = rules.moveSelectionStrategy.selectMove(
-      weighted,
+    final selected = rules.moveSelectionStrategy.selectMove(
+      all,
       legal,
       currentBoard,
     );
-
-    if (selectedMove == null) {
+    if (selected == null) {
       return _fallbackDecision(legal, currentBoard);
     }
 
-    // Sum the net weight on the selected column. If <= 0, the data points
-    // to a losing-flavoured choice — let the fallback strategy pick instead.
-    var netWeight = 0.0;
-    for (final c in weighted) {
-      if (c.state.movePlayed == selectedMove) netWeight += c.weight;
-    }
-    if (netWeight <= 0) {
+    // All-losing guard: rebuild the heatmap and check the chosen move's score.
+    // Heatmap accumulation is microseconds for Connect Four — cheap to redo.
+    final heatmap = InfluenceOverlayStrategy.buildHeatmap(
+      all,
+      currentBoard.rows,
+      currentBoard.cols,
+    );
+    final score = rules.moveScorer.scoreMove(selected, currentBoard, heatmap);
+    if (score <= 0) {
       final move = _fallbackMove(legal, currentBoard);
       return MoveDecision(
         move: move,
         narration: narrate(DecisionContext.allLosing),
         usedFallback: false,
-        candidatesFound: aResults.length + bResults.length,
+        candidatesFound: totalResults,
       );
     }
 
     return MoveDecision(
-      move: selectedMove,
-      narration: _buildNarration(weighted),
+      move: selected,
+      narration: _buildNarration(all),
       usedFallback: false,
-      candidatesFound: aResults.length + bResults.length,
+      candidatesFound: totalResults,
     );
   }
 
-  List<SimilarityResult> _searchOnce(Board query, List<GameState> candidates) {
-    final influence = rules.diffusionKernel.diffuse(query);
-    return searchSimilar(
-      queryDiffusedHash: influenceMapToBitHash(influence),
-      queryTotalMaterial: computeTotalMaterial(query),
-      queryMaterialBalance: computeMaterialBalance(query),
+  List<WeightedCandidate> _runQuery(_Query q, List<GameState> candidates) {
+    final image = quantizeInfluenceMap(rules.diffusionKernel.diffuse(q.board));
+    final totalMaterial = computeTotalMaterial(q.board);
+    final query = GameState(
+      board: q.board,
+      diffusedImage: image,
+      movePlayed: 0,
+      // For Connect Four, ply == totalMaterial (every move adds one piece).
+      // The prefilter is the only consumer of this synthetic state, and CF's
+      // ConnectFourFilter reads `ply`. Other games will plug in filters that
+      // read whatever they need from this query state.
+      ply: totalMaterial,
+      gameId: '__query__',
+      totalMaterial: totalMaterial,
+      materialBalance: computeMaterialBalance(q.board),
+    );
+
+    final results = searchSimilar(
+      queryDiffusedImage: image,
+      prefilter: rules.prefilter(query),
       candidates: candidates,
     );
+
+    final weighted = <WeightedCandidate>[];
+    for (final r in results) {
+      if (r.state.outcome != q.requiredOutcome) continue;
+      final movesToEnd = r.state.movesToEnd;
+      if (movesToEnd == null) continue;
+      final efficiency = 1.0 / (1.0 + movesToEnd);
+      final similarity = 1.0 / (1.0 + r.distance);
+      // Always positive weight. The candidate image's natural sign carries
+      // the lesson: a winner-mover candidate has positive territory at its
+      // mover's cells (push heatmap up there → "play here"); a loser-mover
+      // candidate has negative territory at its mover's cells (push heatmap
+      // down there → "avoid here"). An explicit sign multiplier would
+      // double-count and invert the loss signal. (Diagnosis recap in the
+      // proposal: heatmap aggregation differs from per-column voting in how
+      // it threads sign — this is the corrected formulation.)
+      final weight = efficiency * similarity;
+      if (weight == 0) continue;
+
+      // For mirror queries, the candidate's diffused image and movePlayed need
+      // to be reflected before they enter the heatmap / narration.
+      final transformedState =
+          q.mirror ? _mirrorStateForHeatmap(r.state) : r.state;
+      weighted.add(WeightedCandidate(transformedState, weight));
+    }
+    return weighted;
   }
 
-  double _weightFor(SimilarityResult r, {required int sign}) {
-    final movesToEnd = r.state.movesToEnd;
-    if (movesToEnd == null) return 0;
-    final efficiency = 1.0 / (1.0 + movesToEnd);
-    final similarity = 1.0 / (1.0 + r.distance);
-    return sign * efficiency * similarity;
+  /// Returns a `GameState` whose `diffusedImage` and `movePlayed` are mirrored
+  /// (left-right flipped) so a candidate retrieved via a mirror query can be
+  /// added to the heatmap directly. Other fields are preserved as-is — the
+  /// strategy only reads `diffusedImage` from the state.
+  GameState _mirrorStateForHeatmap(GameState s) {
+    final mirroredImage = _mirrorImage(s.diffusedImage, rules.rows, rules.cols);
+    return GameState(
+      board: s.board,
+      diffusedImage: mirroredImage,
+      movePlayed: rules.cols - 1 - s.movePlayed,
+      ply: s.ply,
+      gameId: s.gameId,
+      totalMaterial: s.totalMaterial,
+      materialBalance: s.materialBalance,
+      outcome: s.outcome,
+      movesToEnd: s.movesToEnd,
+    );
+  }
+
+  Int8List _mirrorImage(Int8List image, int rows, int cols) {
+    final result = Int8List(image.length);
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        result[r * cols + (cols - 1 - c)] = image[r * cols + c];
+      }
+    }
+    return result;
   }
 
   String _buildNarration(List<WeightedCandidate> weighted) {
-    final positives = weighted.where((c) => c.weight > 0).toList();
-    if (positives.length > 1) {
+    if (weighted.length > 1) {
       return narrate(
         DecisionContext.multipleCandidates,
-        candidateCount: positives.length,
+        candidateCount: weighted.length,
       );
     }
-    if (positives.length == 1) {
+    if (weighted.length == 1) {
       return narrate(
         DecisionContext.fuzzyMatch,
-        gameId: positives.first.state.gameId,
+        gameId: weighted.first.state.gameId,
       );
     }
     return narrate(DecisionContext.allLosing);
@@ -210,4 +274,15 @@ class CloneBrain {
         return bestMove;
     }
   }
+}
+
+class _Query {
+  final Board board;
+  final int requiredOutcome;
+  final bool mirror;
+  const _Query(
+    this.board, {
+    required this.requiredOutcome,
+    required this.mirror,
+  });
 }
