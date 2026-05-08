@@ -8,7 +8,6 @@ import 'game_state.dart';
 import 'move_selection.dart';
 import 'narration.dart';
 import 'similarity.dart';
-import 'zobrist.dart';
 
 enum FallbackStrategy { random, middleFocus, edgeFocus, pileFocus }
 
@@ -30,7 +29,6 @@ class CloneBrain {
   final GameRules rules;
   final GameLog log;
   final FallbackStrategy fallback;
-  final ZobristTable _zobristTable;
   final Random _random;
 
   CloneBrain({
@@ -38,31 +36,23 @@ class CloneBrain {
     required this.log,
     this.fallback = FallbackStrategy.random,
     Random? random,
-  }) : _zobristTable = ZobristTable.forGame(rules),
-       _random = random ?? Random();
-
-  ZobristTable get zobristTable => _zobristTable;
+  }) : _random = random ?? Random();
 
   GameState createState({
     required Board board,
     required int movePlayed,
     required int ply,
-    required int side,
     required String gameId,
   }) {
-    final canonical = canonicalize(board, side, _zobristTable);
-    final influence = rules.diffusionKernel.diffuse(canonical.board);
-    final diffusedHash = influenceMapToBitHash(influence);
+    final influence = rules.diffusionKernel.diffuse(board);
     return GameState(
-      board: canonical.board,
-      zobristHash: canonical.zobristHash,
-      diffusedHash: diffusedHash,
+      board: board,
+      diffusedHash: influenceMapToBitHash(influence),
       movePlayed: movePlayed,
       ply: ply,
-      side: side,
       gameId: gameId,
-      totalMaterial: computeTotalMaterial(canonical.board),
-      materialBalance: computeMaterialBalance(canonical.board),
+      totalMaterial: computeTotalMaterial(board),
+      materialBalance: computeMaterialBalance(board),
     );
   }
 
@@ -77,45 +67,35 @@ class CloneBrain {
       );
     }
 
-    final canonical = canonicalize(currentBoard, side, _zobristTable);
-    final influence = rules.diffusionKernel.diffuse(canonical.board);
-    final diffusedHash = influenceMapToBitHash(influence);
-    final totalMat = computeTotalMaterial(canonical.board);
-    final matBal = computeMaterialBalance(canonical.board);
-
     final completed = log.statesWithOutcome();
     if (completed.isEmpty) {
       return _fallbackDecision(legal, currentBoard);
     }
 
-    final results = searchSimilar(
-      queryZobristHash: canonical.zobristHash,
-      queryDiffusedHash: diffusedHash,
-      queryTotalMaterial: totalMat,
-      queryMaterialBalance: matBal,
-      candidates: completed,
-    );
+    // Query A: assume bot is the eventual winner. Bot's pieces become +1
+    // in the query, matching bot-won games' winner-POV stored canonicals.
+    // outcome=+1 rows there = bot played this move and won.
+    final aResults = _searchOnce(flipPerspective(currentBoard), completed);
 
-    if (results.isEmpty) {
-      return _fallbackDecision(legal, currentBoard);
-    }
+    // Query B: assume bot is the eventual loser. Bot's pieces stay -1 in the
+    // query, matching player-won games' winner-POV stored canonicals.
+    // outcome=-1 rows there = bot played this move and lost.
+    final bResults = _searchOnce(currentBoard, completed);
 
     final weighted = <WeightedCandidate>[];
-    for (final result in results) {
-      final w = _weightCandidate(result.state);
-      if (w > 0) {
-        weighted.add(WeightedCandidate(result.state, w));
-      }
+    for (final r in aResults) {
+      if (r.state.outcome != 1) continue;
+      final w = _weightFor(r, sign: 1);
+      if (w != 0) weighted.add(WeightedCandidate(r.state, w));
+    }
+    for (final r in bResults) {
+      if (r.state.outcome != -1) continue;
+      final w = _weightFor(r, sign: -1);
+      if (w != 0) weighted.add(WeightedCandidate(r.state, w));
     }
 
     if (weighted.isEmpty) {
-      final move = _fallbackMove(legal, currentBoard);
-      return MoveDecision(
-        move: move,
-        narration: narrate(DecisionContext.allLosing),
-        usedFallback: false,
-        candidatesFound: results.length,
-      );
+      return _fallbackDecision(legal, currentBoard);
     }
 
     final selectedMove = rules.moveSelectionStrategy.selectMove(
@@ -128,52 +108,63 @@ class CloneBrain {
       return _fallbackDecision(legal, currentBoard);
     }
 
-    final narrationText = _buildNarration(results, weighted);
+    // Sum the net weight on the selected column. If <= 0, the data points
+    // to a losing-flavoured choice — let the fallback strategy pick instead.
+    var netWeight = 0.0;
+    for (final c in weighted) {
+      if (c.state.movePlayed == selectedMove) netWeight += c.weight;
+    }
+    if (netWeight <= 0) {
+      final move = _fallbackMove(legal, currentBoard);
+      return MoveDecision(
+        move: move,
+        narration: narrate(DecisionContext.allLosing),
+        usedFallback: false,
+        candidatesFound: aResults.length + bResults.length,
+      );
+    }
 
     return MoveDecision(
       move: selectedMove,
-      narration: narrationText,
+      narration: _buildNarration(weighted),
       usedFallback: false,
-      candidatesFound: results.length,
+      candidatesFound: aResults.length + bResults.length,
     );
   }
 
-  double _weightCandidate(GameState state) {
-    final outcome = state.outcome;
-    final movesToEnd = state.movesToEnd;
-    if (outcome == null || movesToEnd == null) return 0;
-
-    final outcomeScore = switch (outcome) {
-      1 => 1.0,
-      0 => 0.5,
-      _ => 0.0,
-    };
-    final efficiency = 1.0 / (1.0 + movesToEnd);
-    return outcomeScore * efficiency;
+  List<SimilarityResult> _searchOnce(Board query, List<GameState> candidates) {
+    final influence = rules.diffusionKernel.diffuse(query);
+    return searchSimilar(
+      queryDiffusedHash: influenceMapToBitHash(influence),
+      queryTotalMaterial: computeTotalMaterial(query),
+      queryMaterialBalance: computeMaterialBalance(query),
+      candidates: candidates,
+    );
   }
 
-  String _buildNarration(
-    List<SimilarityResult> results,
-    List<WeightedCandidate> weighted,
-  ) {
-    if (results.length == 1 && results.first.isExactMatch) {
-      final s = results.first.state;
-      return narrate(
-        DecisionContext.exactMatch,
-        gameId: s.gameId,
-        movesToEnd: s.movesToEnd,
-      );
-    }
-    if (weighted.length > 1) {
+  double _weightFor(SimilarityResult r, {required int sign}) {
+    final movesToEnd = r.state.movesToEnd;
+    if (movesToEnd == null) return 0;
+    final efficiency = 1.0 / (1.0 + movesToEnd);
+    final similarity = 1.0 / (1.0 + r.distance);
+    return sign * efficiency * similarity;
+  }
+
+  String _buildNarration(List<WeightedCandidate> weighted) {
+    final positives = weighted.where((c) => c.weight > 0).toList();
+    if (positives.length > 1) {
       return narrate(
         DecisionContext.multipleCandidates,
-        candidateCount: weighted.length,
+        candidateCount: positives.length,
       );
     }
-    return narrate(
-      DecisionContext.fuzzyMatch,
-      gameId: weighted.first.state.gameId,
-    );
+    if (positives.length == 1) {
+      return narrate(
+        DecisionContext.fuzzyMatch,
+        gameId: positives.first.state.gameId,
+      );
+    }
+    return narrate(DecisionContext.allLosing);
   }
 
   MoveDecision _fallbackDecision(List<int> legalMoves, Board board) {

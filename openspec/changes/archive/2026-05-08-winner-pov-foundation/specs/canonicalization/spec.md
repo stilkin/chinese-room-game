@@ -1,3 +1,13 @@
+## REMOVED Requirements
+
+### Requirement: Mirror normalization
+**Reason**: Mirror canonicalization existed primarily as scaffolding for Zobrist exact-match equivalence. With Zobrist removed, mirror equivalence is recovered (if needed) at query time, not at write time.
+**Migration**: Stored boards are no longer mirror-normalized. Mirror-equivalent positions don't match each other in the matcher unless query-time mirror search is added later.
+
+### Requirement: Perspective normalization
+**Reason**: Per-row perspective canonicalization split data into two parallel hash spaces, making cross-perspective lookup require workarounds. Replaced by per-game winner-POV storage at backfill time.
+**Migration**: `GameState.side` field removed. Boards are stored in display perspective at write time; perspective transform applies once per game at backfill (only on bot wins).
+
 ## ADDED Requirements
 
 ### Requirement: Winner-POV storage at backfill
@@ -68,6 +78,8 @@ Where `sign` is `+1` for Query A's positive candidates and `-1` for Query B's ne
 #### Scenario: All-negative post-vote routes to fallback
 - **WHEN** every legal move column has net weight `≤ 0` after the vote
 - **THEN** the brain SHALL invoke the fallback strategy and report `usedFallback=true`
+
+## MODIFIED Requirements
 
 ### Requirement: Canonicalization happens at write time
 All perspective transformation (winner-POV alignment for bot-won games) SHALL be applied at backfill time before any subsequent query. Read-time queries SHALL apply only perspective transforms to the *query* board, never modifying stored data.

@@ -4,11 +4,9 @@ import 'package:game_engine/game_engine.dart';
 GameState _makeState({int movePlayed = 0}) {
   return GameState(
     board: Board(6, 7),
-    zobristHash: 0,
     diffusedHash: [0],
     movePlayed: movePlayed,
     ply: 0,
-    side: 1,
     gameId: 'g1',
     totalMaterial: 0,
     materialBalance: 0,

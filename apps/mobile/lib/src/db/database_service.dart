@@ -8,8 +8,25 @@ import 'package:sqflite/sqflite.dart';
 import 'board_codec.dart';
 
 const _kDbName = 'pi_ying.db';
-const _kSchemaVersion = 1;
+const _kSchemaVersion = 2;
 const _kFallbackKey = 'fallback';
+
+const _kCreateGameStatesV2 = '''
+  CREATE TABLE game_states (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_id TEXT NOT NULL,
+    ply INTEGER NOT NULL,
+    move_played INTEGER NOT NULL,
+    diffused_hash BLOB NOT NULL,
+    board BLOB NOT NULL,
+    rows INTEGER NOT NULL,
+    cols INTEGER NOT NULL,
+    total_material INTEGER NOT NULL,
+    material_balance INTEGER NOT NULL,
+    outcome INTEGER,
+    moves_to_end INTEGER
+  )
+''';
 
 class DatabaseService {
   final DatabaseFactory _factory;
@@ -43,24 +60,7 @@ class DatabaseService {
               total_moves INTEGER
             )
           ''');
-          await db.execute('''
-            CREATE TABLE game_states (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              game_id TEXT NOT NULL,
-              ply INTEGER NOT NULL,
-              side INTEGER NOT NULL,
-              move_played INTEGER NOT NULL,
-              zobrist_hash INTEGER NOT NULL,
-              diffused_hash BLOB NOT NULL,
-              board BLOB NOT NULL,
-              rows INTEGER NOT NULL,
-              cols INTEGER NOT NULL,
-              total_material INTEGER NOT NULL,
-              material_balance INTEGER NOT NULL,
-              outcome INTEGER,
-              moves_to_end INTEGER
-            )
-          ''');
+          await db.execute(_kCreateGameStatesV2);
           await db.execute(
             'CREATE INDEX idx_game_states_game_id ON game_states(game_id)',
           );
@@ -73,6 +73,21 @@ class DatabaseService {
               value TEXT NOT NULL
             )
           ''');
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 2) {
+            // Schema-incompatible: v1 data was per-row perspective canonicalized,
+            // v2 expects per-game winner-POV. Wipe and recreate.
+            await db.execute('DROP TABLE IF EXISTS game_states');
+            await db.execute(_kCreateGameStatesV2);
+            await db.execute(
+              'CREATE INDEX idx_game_states_game_id ON game_states(game_id)',
+            );
+            await db.execute(
+              'CREATE INDEX idx_game_states_filter ON game_states(total_material, material_balance)',
+            );
+            await db.delete('games');
+          }
         },
       ),
     );
@@ -111,9 +126,7 @@ class DatabaseService {
     return {
       'game_id': s.gameId,
       'ply': s.ply,
-      'side': s.side,
       'move_played': s.movePlayed,
-      'zobrist_hash': s.zobristHash,
       'diffused_hash': hashListToBlob(s.diffusedHash),
       'board': boardToBlob(s.board),
       'rows': s.board.rows,
@@ -153,11 +166,9 @@ class DatabaseService {
     final diffused = hashListFromBlob(row['diffused_hash']! as Uint8List);
     return GameState(
       board: board,
-      zobristHash: row['zobrist_hash']! as int,
       diffusedHash: diffused,
       movePlayed: row['move_played']! as int,
       ply: row['ply']! as int,
-      side: row['side']! as int,
       gameId: row['game_id']! as String,
       totalMaterial: row['total_material']! as int,
       materialBalance: row['material_balance']! as int,
@@ -166,6 +177,8 @@ class DatabaseService {
     );
   }
 
+  // Outcome from the player's POV (player moves on even plies). The clone's
+  // odd-ply rows get the opposite sign.
   Future<void> backfillStates(
     String gameId,
     int outcome,
@@ -174,7 +187,7 @@ class DatabaseService {
     await db.rawUpdate(
       '''
       UPDATE game_states
-      SET outcome = CASE WHEN side = 1 THEN ? ELSE ? END,
+      SET outcome = CASE WHEN (ply % 2) = 0 THEN ? ELSE ? END,
           moves_to_end = ? - ply
       WHERE game_id = ?
       ''',

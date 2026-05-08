@@ -4,13 +4,8 @@ import 'game_state.dart';
 class SimilarityResult {
   final GameState state;
   final int distance;
-  final bool isExactMatch;
 
-  SimilarityResult({
-    required this.state,
-    required this.distance,
-    this.isExactMatch = false,
-  });
+  SimilarityResult({required this.state, required this.distance});
 }
 
 int hammingDistance(List<int> a, List<int> b) {
@@ -58,7 +53,6 @@ int computeMaterialBalance(Board board) {
 }
 
 List<SimilarityResult> searchSimilar({
-  required int queryZobristHash,
   required List<int> queryDiffusedHash,
   required int queryTotalMaterial,
   required int queryMaterialBalance,
@@ -66,22 +60,12 @@ List<SimilarityResult> searchSimilar({
   int minCandidates = 5,
   int initialWindow = 2,
 }) {
-  final exactMatches = <SimilarityResult>[];
-  for (final state in candidates) {
-    if (state.zobristHash == queryZobristHash) {
-      exactMatches.add(
-        SimilarityResult(state: state, distance: 0, isExactMatch: true),
-      );
-    }
-  }
-
   var window = initialWindow;
   var filtered = <GameState>[];
 
   while (true) {
     filtered = [];
     for (final state in candidates) {
-      if (state.zobristHash == queryZobristHash) continue;
       final matDiff = (state.totalMaterial - queryTotalMaterial).abs();
       final balDiff = (state.materialBalance - queryMaterialBalance).abs();
       if (matDiff <= window && balDiff <= window) {
@@ -91,18 +75,17 @@ List<SimilarityResult> searchSimilar({
     if (filtered.length >= minCandidates) break;
     window *= 2;
     if (window > 1000) {
-      filtered =
-          candidates.where((s) => s.zobristHash != queryZobristHash).toList();
+      filtered = candidates.toList();
       break;
     }
   }
 
-  final fuzzyResults = <SimilarityResult>[];
+  final results = <SimilarityResult>[];
   for (final state in filtered) {
     final dist = hammingDistance(state.diffusedHash, queryDiffusedHash);
-    fuzzyResults.add(SimilarityResult(state: state, distance: dist));
+    results.add(SimilarityResult(state: state, distance: dist));
   }
-  fuzzyResults.sort((a, b) => a.distance.compareTo(b.distance));
+  results.sort((a, b) => a.distance.compareTo(b.distance));
 
-  return [...exactMatches, ...fuzzyResults];
+  return results;
 }

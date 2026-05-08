@@ -27,14 +27,16 @@ class _Fixture {
 }
 
 // Wait until the notifier is ready to accept the player's next move (or the
-// game has ended). The clone's turn runs as a scheduled microtask after
-// playerMove returns, so a fixed N-iteration settle is timing-dependent under
-// load. Poll instead.
+// game has ended and its end-of-game chain has fully settled). The clone's
+// turn runs as a scheduled microtask after playerMove returns, and `_endGame`
+// runs further awaits (backfill + invert) — we must wait for `isCloneThinking`
+// to flip back to false before checking other state.
 Future<void> _settle(GameNotifier notifier) async {
   for (var i = 0; i < 200; i++) {
     await Future<void>.delayed(Duration.zero);
+    if (notifier.isCloneThinking) continue;
     if (notifier.outcome != null) return;
-    if (!notifier.isCloneThinking && notifier.currentSide == 1) return;
+    if (notifier.currentSide == 1) return;
   }
 }
 
@@ -99,7 +101,7 @@ void main() {
     }
   });
 
-  test('player-won game flips every row to bot-perspective space', () async {
+  test('player-won game is stored as-is (no flip)', () async {
     await f.notifier.setFallback(FallbackStrategy.edgeFocus);
     await f.notifier.startNewGame();
 
@@ -109,35 +111,27 @@ void main() {
     }
     expect(f.notifier.outcome, 1);
 
-    final loaded = await f.db.loadAllGameStates();
+    final loaded = await f.db.loadAllGameStates()
+      ..sort((a, b) => a.ply.compareTo(b.ply));
     expect(loaded, isNotEmpty);
 
-    // After full-flip the whole game reads as if the bot played it.
-    // The 4 player rows (originally side=+1, outcome=+1) are now
-    // side=-1, outcome=+1. The 3 clone rows (originally side=-1,
-    // outcome=-1) are now side=+1, outcome=-1.
-    final winningRows = loaded.where((s) => s.outcome == 1).toList();
-    final losingRows = loaded.where((s) => s.outcome == -1).toList();
-    expect(winningRows, hasLength(4));
-    expect(winningRows.every((s) => s.side == -1), true);
-    expect(losingRows, hasLength(3));
-    expect(losingRows.every((s) => s.side == 1), true);
+    // Player won → no perspective flip. Stored boards match display POV:
+    // (5,3) was the player's first move at +1 in display, so the ply-0
+    // board has +1 there.
+    expect(loaded.first.board.get(5, 3), 1);
 
-    // In-memory log mirrors the DB.
-    expect(
-      f.log.states.where((s) => s.side == -1 && s.outcome == 1),
-      hasLength(4),
-    );
-    expect(
-      f.log.states.where((s) => s.side == 1 && s.outcome == -1),
-      hasLength(3),
-    );
+    // Even-ply rows are player moves: outcome=+1 (winner moved).
+    // Odd-ply rows are clone moves: outcome=-1 (loser moved).
+    final evenPlyRows = loaded.where((s) => s.ply.isEven).toList();
+    final oddPlyRows = loaded.where((s) => s.ply.isOdd).toList();
+    expect(evenPlyRows, hasLength(4));
+    expect(evenPlyRows.every((s) => s.outcome == 1), true);
+    expect(oddPlyRows, hasLength(3));
+    expect(oddPlyRows.every((s) => s.outcome == -1), true);
   });
 
-  test('clone-won game leaves player-side rows untouched', () async {
-    // Make the clone win by feeding it data that biases it toward col 3.
-    // Pre-seed the log + DB with a synthetic clone-victory game so the
-    // brain has positive-weighted data from the bot's POV.
+  test('bot-won game is whole-flipped to winner-POV', () async {
+    // Pre-seed a clone-win game so the bot has data biasing it toward col 3.
     final rules = ConnectFourRules();
     final seedBrain = CloneBrain(rules: rules, log: f.log);
     var seedBoard = Board(rules.rows, rules.cols);
@@ -159,7 +153,6 @@ void main() {
         board: seedBoard,
         movePlayed: m.col,
         ply: i,
-        side: m.side,
         gameId: 'seed',
       );
       f.log.addState(s);
@@ -168,17 +161,17 @@ void main() {
     f.log.backfillGame('seed', -1, seedMoves.length);
     await f.db.backfillStates('seed', -1, seedMoves.length);
     await f.db.updateGameOutcome('seed', -1, seedMoves.length);
+    // Apply winner-POV inversion on the seed (clone won).
+    final invertedSeed = f.log.replaceStatesForGame(
+      'seed',
+      (s) => invertState(s, rules.diffusionKernel),
+    );
+    await f.db.replaceAllStatesForGameAtomic('seed', invertedSeed);
 
-    // Force the brain to actually use that data by re-running init (rebuilds
-    // the brain in the same way the app does on cold start).
     await f.notifier.startNewGame();
 
-    // Player walks into a vertical loss at col 3 by avoiding it. Play col 0
-    // four times; the clone, biased toward col 3 by the seed game, builds a
-    // vertical 4 there.
     for (var i = 0; i < 6; i++) {
       if (f.notifier.outcome != null) break;
-      // Find any non-3 legal column to advance the player.
       final move = (i.isEven) ? 0 : 6;
       await f.notifier.playerMove(move);
       await _settle(f.notifier);
@@ -191,14 +184,17 @@ void main() {
     );
 
     final loaded = await f.db.loadAllGameStates();
-    final fromCurrentGame = loaded.where((s) => s.gameId != 'seed').toList();
-    final playerSide = fromCurrentGame.where((s) => s.side == 1).toList();
-    final cloneSide = fromCurrentGame.where((s) => s.side == -1).toList();
-    expect(playerSide, isNotEmpty);
-    expect(cloneSide, isNotEmpty);
-    // Bot win: player rows stay at side=+1 with outcome=-1. No inversion.
-    expect(playerSide.every((s) => s.outcome == -1), true);
-    expect(cloneSide.every((s) => s.outcome == 1), true);
+    final currentGameRows = loaded.where((s) => s.gameId != 'seed').toList()
+      ..sort((a, b) => a.ply.compareTo(b.ply));
+    expect(currentGameRows, isNotEmpty);
+
+    // Bot won → whole-game flip. Clone's odd-ply rows (the winner) should
+    // have outcome=+1; player's even-ply rows (the loser) should have
+    // outcome=-1.
+    final evenPlyRows = currentGameRows.where((s) => s.ply.isEven).toList();
+    final oddPlyRows = currentGameRows.where((s) => s.ply.isOdd).toList();
+    expect(evenPlyRows.every((s) => s.outcome == -1), true);
+    expect(oddPlyRows.every((s) => s.outcome == 1), true);
   });
 
   test('move on illegal column is silently ignored', () async {
@@ -223,8 +219,9 @@ void main() {
     await _settle(f.notifier);
 
     final loaded = await f.db.loadAllGameStates();
-    // Only player's first move + clone's reply, no extra player move.
-    expect(loaded.where((s) => s.side == 1), hasLength(1));
+    // Only player's first move (ply 0) + clone's reply (ply 1), no extra
+    // player move.
+    expect(loaded.where((s) => s.ply.isEven), hasLength(1));
   });
 
   test('deleteAllData clears in-memory log and games count', () async {

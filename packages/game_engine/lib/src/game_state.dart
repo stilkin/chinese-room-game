@@ -2,11 +2,9 @@ import 'board.dart';
 
 class GameState {
   final Board board;
-  final int zobristHash;
   final List<int> diffusedHash;
   final int movePlayed;
   final int ply;
-  final int side;
   final String gameId;
   final int totalMaterial;
   final int materialBalance;
@@ -15,11 +13,9 @@ class GameState {
 
   GameState({
     required this.board,
-    required this.zobristHash,
     required this.diffusedHash,
     required this.movePlayed,
     required this.ply,
-    required this.side,
     required this.gameId,
     required this.totalMaterial,
     required this.materialBalance,
@@ -40,7 +36,9 @@ class GameLog {
   void backfillGame(String gameId, int outcome, int totalMoves) {
     for (final state in _states) {
       if (state.gameId != gameId) continue;
-      final sideOutcome = state.side == 1 ? outcome : -outcome;
+      // Even-ply rows are player moves; odd-ply rows are clone moves.
+      // outcome from the player's POV; flip sign for clone rows.
+      final sideOutcome = state.ply.isEven ? outcome : -outcome;
       state.outcome = sideOutcome;
       state.movesToEnd = totalMoves - state.ply;
     }

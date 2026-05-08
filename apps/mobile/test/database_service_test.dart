@@ -6,21 +6,19 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 GameState _state({
   required String gameId,
   required int ply,
-  required int side,
   required int movePlayed,
   Board? board,
+  int materialBalance = 0,
 }) {
   final b = board ?? Board(6, 7);
   return GameState(
     board: b,
-    zobristHash: 0xDEADBEEF + ply,
     diffusedHash: const [0x1234567890ABCDEF, 0x0FEDCBA987654321],
     movePlayed: movePlayed,
     ply: ply,
-    side: side,
     gameId: gameId,
     totalMaterial: ply,
-    materialBalance: side,
+    materialBalance: materialBalance,
   );
 }
 
@@ -44,7 +42,7 @@ void main() {
   });
 
   test('round-trips a game state', () async {
-    final original = _state(gameId: 'g1', ply: 0, side: 1, movePlayed: 3);
+    final original = _state(gameId: 'g1', ply: 0, movePlayed: 3);
     await service.insertGameState(original);
 
     final loaded = await service.loadAllGameStates();
@@ -53,9 +51,7 @@ void main() {
     final s = loaded.first;
     expect(s.gameId, 'g1');
     expect(s.ply, 0);
-    expect(s.side, 1);
     expect(s.movePlayed, 3);
-    expect(s.zobristHash, original.zobristHash);
     expect(s.diffusedHash, original.diffusedHash);
     expect(s.board, original.board);
   });
@@ -70,7 +66,7 @@ void main() {
       [-1, 0, 1, -1, 1, 0, 0],
     ]);
     await service.insertGameState(
-      _state(gameId: 'g1', ply: 5, side: 1, movePlayed: 2, board: board),
+      _state(gameId: 'g1', ply: 5, movePlayed: 2, board: board),
     );
 
     final loaded = await service.loadAllGameStates();
@@ -78,17 +74,17 @@ void main() {
   });
 
   test(
-    'backfills outcome with per-side flip and ply-based moves_to_end',
+    'backfillStates uses ply parity to assign outcome (even=player, odd=clone)',
     () async {
       await service.insertGame('g1');
       await service.insertGameState(
-        _state(gameId: 'g1', ply: 0, side: 1, movePlayed: 3),
+        _state(gameId: 'g1', ply: 0, movePlayed: 3),
       );
       await service.insertGameState(
-        _state(gameId: 'g1', ply: 1, side: -1, movePlayed: 4),
+        _state(gameId: 'g1', ply: 1, movePlayed: 4),
       );
       await service.insertGameState(
-        _state(gameId: 'g1', ply: 2, side: 1, movePlayed: 3),
+        _state(gameId: 'g1', ply: 2, movePlayed: 3),
       );
 
       await service.backfillStates('g1', 1, 3);
@@ -128,9 +124,7 @@ void main() {
 
   test('deleteAllData clears states and games', () async {
     await service.insertGame('g1');
-    await service.insertGameState(
-      _state(gameId: 'g1', ply: 0, side: 1, movePlayed: 3),
-    );
+    await service.insertGameState(_state(gameId: 'g1', ply: 0, movePlayed: 3));
     await service.updateGameOutcome('g1', 1, 1);
 
     await service.deleteAllData();
@@ -143,23 +137,25 @@ void main() {
     'replaceAllStatesForGameAtomic swaps every row of the game atomically',
     () async {
       await service.insertGameState(
-        _state(gameId: 'g1', ply: 0, side: 1, movePlayed: 3),
+        _state(gameId: 'g1', ply: 0, movePlayed: 3),
       );
       await service.insertGameState(
-        _state(gameId: 'g1', ply: 1, side: -1, movePlayed: 0),
+        _state(gameId: 'g1', ply: 1, movePlayed: 0),
       );
       await service.insertGameState(
-        _state(gameId: 'g1', ply: 2, side: 1, movePlayed: 4),
+        _state(gameId: 'g1', ply: 2, movePlayed: 4),
       );
       // Unrelated game must be untouched.
       await service.insertGameState(
-        _state(gameId: 'g2', ply: 0, side: 1, movePlayed: 5),
+        _state(gameId: 'g2', ply: 0, movePlayed: 5),
       );
 
+      // Replacements use a marker materialBalance so we can verify the
+      // swap actually happened.
       final replacements = [
-        _state(gameId: 'g1', ply: 0, side: -1, movePlayed: 3),
-        _state(gameId: 'g1', ply: 1, side: 1, movePlayed: 0),
-        _state(gameId: 'g1', ply: 2, side: -1, movePlayed: 4),
+        _state(gameId: 'g1', ply: 0, movePlayed: 3, materialBalance: 99),
+        _state(gameId: 'g1', ply: 1, movePlayed: 0, materialBalance: 99),
+        _state(gameId: 'g1', ply: 2, movePlayed: 4, materialBalance: 99),
       ];
 
       await service.replaceAllStatesForGameAtomic('g1', replacements);
@@ -169,12 +165,14 @@ void main() {
 
       final g1Rows = all.where((s) => s.gameId == 'g1').toList()
         ..sort((a, b) => a.ply.compareTo(b.ply));
-      expect(g1Rows.map((s) => s.side), [-1, 1, -1]);
+      expect(g1Rows, hasLength(3));
+      expect(g1Rows.every((s) => s.materialBalance == 99), true);
       expect(g1Rows.map((s) => s.movePlayed), [3, 0, 4]);
 
+      // Unrelated game untouched (materialBalance==0 from default).
       final g2Rows = all.where((s) => s.gameId == 'g2').toList();
       expect(g2Rows, hasLength(1));
-      expect(g2Rows.first.side, 1);
+      expect(g2Rows.first.materialBalance, 0);
     },
   );
 }

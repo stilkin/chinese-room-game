@@ -24,7 +24,6 @@ void main() {
           board: board,
           movePlayed: moves[i],
           ply: i,
-          side: side,
           gameId: 'game-1',
         );
         log.addState(state);
@@ -99,7 +98,6 @@ void main() {
             board: board,
             movePlayed: move,
             ply: moveCount - 1,
-            side: side,
             gameId: gameId,
           );
           log.addState(state);
