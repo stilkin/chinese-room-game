@@ -12,6 +12,13 @@ import 'similarity.dart';
 
 enum FallbackStrategy { random, middleFocus, edgeFocus, pileFocus }
 
+/// Per-query cap on candidates that contribute to the heatmap. The matcher
+/// returns all prefilter survivors sorted by L1 distance; we only use the
+/// closest [_kNearestPerQuery] of them. Without a cap, late-game heatmaps
+/// drown in low-relevance contributions because the prefilter passes
+/// hundreds of vaguely-similar rows once the database grows. Tunable.
+const int _kNearestPerQuery = 20;
+
 class MoveDecision {
   final int move;
   final String narration;
@@ -160,10 +167,13 @@ class CloneBrain {
     );
 
     final weighted = <WeightedCandidate>[];
+    var kept = 0;
     for (final r in results) {
       if (r.state.outcome != q.requiredOutcome) continue;
+      if (kept >= _kNearestPerQuery) break;
       final movesToEnd = r.state.movesToEnd;
       if (movesToEnd == null) continue;
+      kept++;
       final efficiency = 1.0 / (1.0 + movesToEnd);
       final similarity = 1.0 / (1.0 + r.distance);
       // Always positive weight. The candidate image's natural sign carries
