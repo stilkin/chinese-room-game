@@ -3,10 +3,6 @@
 ### Requirement: Narration from decision context
 The system SHALL generate a one-line narration string for each clone move based on the decision context: how the move was found, from which game, and with what outcome.
 
-#### Scenario: Exact match narration
-- **WHEN** the clone plays a move from an exact Zobrist match from game #5 that was won in 3 moves
-- **THEN** the narration SHALL reference the game ID and outcome (e.g. "Playing a move from game #5 (won in 3 moves)")
-
 #### Scenario: Fuzzy match narration
 - **WHEN** the clone plays a move from a diffusion-based fuzzy match
 - **THEN** the narration SHALL indicate the match was approximate and reference the source game
@@ -14,10 +10,6 @@ The system SHALL generate a one-line narration string for each clone move based 
 #### Scenario: Multiple candidates narration
 - **WHEN** the clone aggregates multiple candidates suggesting the same move
 - **THEN** the narration SHALL indicate how many times the position was seen (e.g. "I've seen this 4 times before — going with what worked best")
-
-#### Scenario: Inverted data narration
-- **WHEN** the clone plays a move derived from an opponent's winning move in a lost game
-- **THEN** the narration SHALL indicate the source (e.g. "Playing a move that was used against me in game #12")
 
 #### Scenario: Fallback narration
 - **WHEN** the clone uses a fallback strategy (no relevant data)

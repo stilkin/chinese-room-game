@@ -11,17 +11,26 @@ context: |
 
   Architecture: Dart pub workspace monorepo.
     - packages/game_engine/ — pure Dart library (no Flutter dependency) with
-      board representation, rules, canonicalization, Zobrist hashing, diffusion
-      kernels, similarity search, move selection, and clone narration.
+      board representation, rules, diffusion kernels, similarity search, move
+      selection, clone brain, and narration.
     - apps/mobile/ — Flutter mobile app, depends on game_engine.
     - apps/web/ — Flutter Web frontend (phase 2), depends on game_engine.
     - server/ — Dart backend (phase 3), depends on game_engine.
 
-  Core engine: boards are 2D Int8 arrays. Similarity search uses Zobrist
-  hashing (exact) and diffused influence maps (fuzzy). Diffusion kernels are
-  game-specific — adding a new game means a rules module + diffusion kernel.
-  Symmetry canonicalization at write time. Losses stored as opponent wins to
-  double training data.
+  Core engine: boards are 2D Int8 arrays. Similarity is purely perceptual —
+  diffusion kernels turn boards into influence maps, which collapse to a
+  bit-hash; matching is Hamming distance over those hashes plus a material
+  pre-filter. Diffusion kernels are game-specific (adding a new game means a
+  rules module + diffusion kernel).
+
+  Storage convention: per-game winner-POV. At game end every row of the
+  finished game is aligned so the winner's pieces are +1 — player wins are
+  stored as-is; bot wins are flipped via invertState; draws are stored as-is.
+  At decision time the bot runs two queries (one with flipPerspective(current),
+  one unchanged) and combines outcome=+1 candidates from the first query
+  (its own past wins, positive weight) with outcome=-1 candidates from the
+  second (its own past losses, negative weight) in a sign-aware,
+  distance-weighted vote.
 
   Build phases: (1) game engine + mobile Connect Four MVP, (2) diffusion +
   polish, (3) online backend + league + web, (4) more games. Validate fun

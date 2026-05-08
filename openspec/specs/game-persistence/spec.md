@@ -12,11 +12,15 @@ The app SHALL write each new game state to SQLite immediately after it is create
 - **THEN** the canonical game state SHALL be written to the game_states table
 
 ### Requirement: Outcome backfill on game end
-The app SHALL update all game states for the completed game with outcome and moves_to_end when the game ends. Inverted (opponent-perspective) states SHALL also be created and stored.
+The app SHALL update all stored rows for the completed game with `outcome` (per row, derived from ply parity and the winner) and `moves_to_end`. The perspective alignment for the finished game (winner-POV whole-game flip on bot wins, store-as-is on player wins or draws) SHALL be applied at backfill time as defined in the canonicalization spec.
 
 #### Scenario: Game ends in a win
-- **WHEN** a game ends
-- **THEN** all states for that game SHALL have outcome and moves_to_end updated in SQLite, and inverted states SHALL be inserted
+- **WHEN** a game ends with a winner
+- **THEN** every row of that game SHALL have `outcome` set in SQLite (even-ply rows take the player-side outcome, odd-ply rows take its negation) and `moves_to_end` set to `total_moves - ply`, and the winner-POV alignment SHALL be persisted (rows replaced with their inverted form on a bot win)
+
+#### Scenario: Game ends in a draw
+- **WHEN** a game ends in a draw
+- **THEN** every row of that game SHALL have `outcome=0` and `moves_to_end` set; rows SHALL remain in display perspective (no flip)
 
 ### Requirement: Bulk load on startup
 The app SHALL load all game states from SQLite into the engine's in-memory GameLog on app startup.
