@@ -60,6 +60,31 @@ void main() {
       expect(decision.move, 2); // col 2 has 2 pieces, col 5 has 1
     });
 
+    test('pileFocus on empty board picks the middle column', () {
+      final brain = CloneBrain(
+        rules: rules,
+        log: GameLog(),
+        fallback: FallbackStrategy.pileFocus,
+      );
+      final decision = brain.selectMove(Board(6, 7), 1);
+      expect(decision.move, 3);
+    });
+
+    test('pileFocus tie-break prefers closer-to-middle column', () {
+      final brain = CloneBrain(
+        rules: rules,
+        log: GameLog(),
+        fallback: FallbackStrategy.pileFocus,
+      );
+      final board = Board(6, 7);
+      // Cols 1 and 5 both have one piece; both at distance 2 from mid (=3).
+      // Ties go to lower index (sort stability), so col 1 wins.
+      board.set(5, 1, 1);
+      board.set(5, 5, -1);
+      final decision = brain.selectMove(board, 1);
+      expect(decision.move, 1);
+    });
+
     test('createState produces valid GameState', () {
       final brain = CloneBrain(rules: rules, log: GameLog());
       final board = Board(6, 7);

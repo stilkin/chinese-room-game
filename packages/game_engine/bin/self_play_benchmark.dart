@@ -168,9 +168,32 @@ _CoachFn _coachFor(String kind, ConnectFourRules rules, Random random) {
           ..sort((a, b) => (b - mid).abs().compareTo((a - mid).abs()));
         return sorted.first;
       };
+    case 'pile':
+      return (board) {
+        // Mirrors FallbackStrategy.pileFocus: highest pile wins, ties broken
+        // by closeness to the middle column.
+        final legal = rules.legalMoves(board);
+        final mid = rules.cols ~/ 2;
+        var bestMove = legal.first;
+        var bestCount = -1;
+        var bestDist = rules.cols;
+        for (final move in legal) {
+          var count = 0;
+          for (var r = 0; r < board.rows; r++) {
+            if (board.get(r, move) != 0) count++;
+          }
+          final dist = (move - mid).abs();
+          if (count > bestCount || (count == bestCount && dist < bestDist)) {
+            bestCount = count;
+            bestMove = move;
+            bestDist = dist;
+          }
+        }
+        return bestMove;
+      };
     default:
       throw ArgumentError(
-        'Unknown coach kind: $kind (try middle, random, edge)',
+        'Unknown coach kind: $kind (try middle, random, edge, pile)',
       );
   }
 }

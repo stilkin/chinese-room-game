@@ -269,16 +269,22 @@ class CloneBrain {
           ..sort((a, b) => (b - mid).abs().compareTo((a - mid).abs()));
         return sorted.first;
       case FallbackStrategy.pileFocus:
+        // Highest pile wins; ties broken by closeness to the middle column
+        // (so the empty-board opening lands at the centre instead of col 0).
+        final mid = rules.cols ~/ 2;
         var bestMove = legalMoves.first;
         var bestCount = -1;
+        var bestDist = rules.cols;
         for (final move in legalMoves) {
           var count = 0;
           for (var r = 0; r < board.rows; r++) {
             if (board.get(r, move) != 0) count++;
           }
-          if (count > bestCount) {
+          final dist = (move - mid).abs();
+          if (count > bestCount || (count == bestCount && dist < bestDist)) {
             bestCount = count;
             bestMove = move;
+            bestDist = dist;
           }
         }
         return bestMove;
