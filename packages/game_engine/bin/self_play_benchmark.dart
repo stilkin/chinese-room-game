@@ -3,21 +3,30 @@ import 'dart:math';
 import 'package:game_engine/game_engine.dart';
 
 /// Self-play benchmark: a CloneBrain trainee (side = -1) plays a fixed
-/// middle-focus coach (side = +1) for N games. Coach moves first (matching the
-/// real game's player-first convention). After each game the log is backfilled
-/// and winner-POV inversion is applied on trainee wins, exactly as the mobile
-/// app does at game end. Stdout is CSV-ish so the numbers can be eyeballed or
-/// piped into something else.
+/// rule-based coach (side = +1) for N games. Coach moves first (matching the
+/// real game's player-first convention). After each TRAINING game the log is
+/// backfilled and winner-POV inversion is applied on trainee wins, exactly as
+/// the mobile app does at game end. Stdout is CSV-ish.
 ///
-/// Usage:
-///   dart run bin/self_play_benchmark.dart                  # 200 games, seed 42
-///   dart run bin/self_play_benchmark.dart 500              # 500 games
-///   dart run bin/self_play_benchmark.dart 500 7            # 500 games, seed 7
-///   dart run bin/self_play_benchmark.dart 500 7 random     # coach = random
+/// Two run modes:
+///
+/// 1. Single-coach (3 positional args). All games are training: log
+///    accumulates, brain learns continuously.
+///      dart run bin/self_play_benchmark.dart 200 42 middle
+///
+/// 2. Generalization test (5 positional args). Train against `trainCoach`
+///    for `trainGames` games (log accumulates as usual), then *freeze the
+///    log* and play the remaining `games - trainGames` games against
+///    `evalCoach` without recording new states. Tests whether what the bot
+///    learned against one personality transfers to a different one.
+///      dart run bin/self_play_benchmark.dart 200 42 middle pile 100
 void main(List<String> args) {
   final games = args.isNotEmpty ? int.parse(args[0]) : 200;
   final seed = args.length > 1 ? int.parse(args[1]) : 42;
-  final coachKind = args.length > 2 ? args[2] : 'middle';
+  final trainCoachKind = args.length > 2 ? args[2] : 'middle';
+  final isGeneralizationTest = args.length >= 5;
+  final evalCoachKind = isGeneralizationTest ? args[3] : trainCoachKind;
+  final trainGames = isGeneralizationTest ? int.parse(args[4]) : games;
   const windowSize = 25;
 
   final rules = ConnectFourRules();
@@ -29,20 +38,42 @@ void main(List<String> args) {
     fallback: FallbackStrategy.random,
     random: random,
   );
-  final coach = _coachFor(coachKind, rules, random);
+  final trainCoach = _coachFor(trainCoachKind, rules, random);
+  final evalCoach = _coachFor(evalCoachKind, rules, random);
 
-  print('# self-play benchmark');
-  print('# trainee = CloneBrain (random fallback) on side -1');
-  print('# coach   = $coachKind on side +1, moves first');
-  print('# games=$games, window=$windowSize, seed=$seed');
+  if (isGeneralizationTest) {
+    print('# self-play benchmark (generalization test)');
+    print('# trainee     = CloneBrain (random fallback) on side -1');
+    print('# train coach = $trainCoachKind on side +1, moves first');
+    print('# eval coach  = $evalCoachKind on side +1, moves first');
+    print(
+      '# train games = $trainGames, eval games = ${games - trainGames}, '
+      'seed = $seed',
+    );
+  } else {
+    print('# self-play benchmark');
+    print('# trainee = CloneBrain (random fallback) on side -1');
+    print('# coach   = $trainCoachKind on side +1, moves first');
+    print('# games=$games, seed=$seed');
+  }
+  print('# window=$windowSize');
   print('');
-  print('game,winner,plies,trainee_fallback_moves,trainee_candidate_avg');
+  print('game,phase,winner,plies,trainee_fallback_moves,trainee_candidate_avg');
 
   final outcomes = <int>[];
   final plies = <int>[];
 
   for (var g = 0; g < games; g++) {
-    final result = _playGame(rules, brain, coach, log, gameIndex: g);
+    final inTraining = g < trainGames;
+    final coach = inTraining ? trainCoach : evalCoach;
+    final result = _playGame(
+      rules,
+      brain,
+      coach,
+      log,
+      gameIndex: g,
+      record: inTraining,
+    );
     outcomes.add(result.winner);
     plies.add(result.plies);
     final candAvg =
@@ -50,15 +81,30 @@ void main(List<String> args) {
             ? 0.0
             : result.traineeCandidatesTotal / result.traineeMoves;
     print(
-      '${g + 1},${result.winner},${result.plies},'
-      '${result.traineeFallbackMoves},${candAvg.toStringAsFixed(1)}',
+      '${g + 1},${inTraining ? 'train' : 'eval'},${result.winner},'
+      '${result.plies},${result.traineeFallbackMoves},'
+      '${candAvg.toStringAsFixed(1)}',
     );
   }
 
   print('');
   _printWindowStats(outcomes, plies, windowSize);
   print('');
-  _printSummary(outcomes, plies);
+  if (isGeneralizationTest) {
+    _printPhaseSummary(
+      label: 'training summary ($trainCoachKind)',
+      outcomes: outcomes.sublist(0, trainGames),
+      plies: plies.sublist(0, trainGames),
+    );
+    print('');
+    _printPhaseSummary(
+      label: 'evaluation summary ($evalCoachKind, frozen log)',
+      outcomes: outcomes.sublist(trainGames),
+      plies: plies.sublist(trainGames),
+    );
+  } else {
+    _printSummary(outcomes, plies);
+  }
 }
 
 class _GameResult {
@@ -85,6 +131,7 @@ _GameResult _playGame(
   _CoachFn coach,
   GameLog log, {
   required int gameIndex,
+  required bool record,
 }) {
   final gameId = 'bench-$gameIndex';
   var board = Board(rules.rows, rules.cols);
@@ -98,14 +145,16 @@ _GameResult _playGame(
       // Coach moves on +1.
       final move = coach(board);
       board = rules.applyMove(board, move, 1);
-      log.addState(
-        brain.createState(
-          board: board,
-          movePlayed: move,
-          ply: ply,
-          gameId: gameId,
-        ),
-      );
+      if (record) {
+        log.addState(
+          brain.createState(
+            board: board,
+            movePlayed: move,
+            ply: ply,
+            gameId: gameId,
+          ),
+        );
+      }
     } else {
       // Trainee moves on -1.
       final decision = brain.selectMove(board, -1);
@@ -113,26 +162,30 @@ _GameResult _playGame(
       if (decision.usedFallback) traineeFallbackMoves += 1;
       traineeCandidatesTotal += decision.candidatesFound;
       board = rules.applyMove(board, decision.move, -1);
-      log.addState(
-        brain.createState(
-          board: board,
-          movePlayed: decision.move,
-          ply: ply,
-          gameId: gameId,
-        ),
-      );
+      if (record) {
+        log.addState(
+          brain.createState(
+            board: board,
+            movePlayed: decision.move,
+            ply: ply,
+            gameId: gameId,
+          ),
+        );
+      }
     }
     ply += 1;
 
     final winner = rules.checkWinner(board);
     if (winner != null) {
-      log.backfillGame(gameId, winner, ply);
-      if (winner == -1) {
-        // Trainee won → flip every row to winner-POV (matches mobile _endGame).
-        log.replaceStatesForGame(
-          gameId,
-          (s) => invertState(s, rules.diffusionKernel),
-        );
+      if (record) {
+        log.backfillGame(gameId, winner, ply);
+        if (winner == -1) {
+          // Trainee won → flip every row to winner-POV (matches mobile _endGame).
+          log.replaceStatesForGame(
+            gameId,
+            (s) => invertState(s, rules.diffusionKernel),
+          );
+        }
       }
       return _GameResult(
         winner: winner,
@@ -253,5 +306,27 @@ void _printSummary(List<int> outcomes, List<int> plies) {
   }
   print(
     'avg_plies_overall,${(plies.fold<int>(0, (a, b) => a + b) / n).toStringAsFixed(1)}',
+  );
+}
+
+void _printPhaseSummary({
+  required String label,
+  required List<int> outcomes,
+  required List<int> plies,
+}) {
+  final n = outcomes.length;
+  print('# $label');
+  print('total_games,$n');
+  if (n == 0) return;
+  final wins = outcomes.where((o) => o == -1).length;
+  final losses = outcomes.where((o) => o == 1).length;
+  final draws = outcomes.where((o) => o == 0).length;
+  print('trainee_wins,$wins');
+  print('coach_wins,$losses');
+  print('draws,$draws');
+  print('trainee_win_rate,${(wins / n).toStringAsFixed(3)}');
+  print('trainee_nonloss_rate,${((wins + draws) / n).toStringAsFixed(3)}');
+  print(
+    'avg_plies,${(plies.fold<int>(0, (a, b) => a + b) / n).toStringAsFixed(1)}',
   );
 }
