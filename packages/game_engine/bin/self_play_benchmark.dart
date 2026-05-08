@@ -4,29 +4,37 @@ import 'package:game_engine/game_engine.dart';
 
 /// Self-play benchmark: a CloneBrain trainee (side = -1) plays a fixed
 /// rule-based coach (side = +1) for N games. Coach moves first (matching the
-/// real game's player-first convention). After each TRAINING game the log is
-/// backfilled and winner-POV inversion is applied on trainee wins, exactly as
-/// the mobile app does at game end. Stdout is CSV-ish.
+/// real game's player-first convention). When the trainee is in "recording"
+/// mode, after each game the log is backfilled and winner-POV inversion is
+/// applied on trainee wins (exactly as the mobile app's _endGame does).
 ///
-/// Two run modes:
+/// Run modes (positional arg count):
 ///
-/// 1. Single-coach (3 positional args). All games are training: log
-///    accumulates, brain learns continuously.
+/// 1. Single-coach (3 args). All games record. Brain learns continuously.
 ///      dart run bin/self_play_benchmark.dart 200 42 middle
 ///
-/// 2. Generalization test (5 positional args). Train against `trainCoach`
-///    for `trainGames` games (log accumulates as usual), then *freeze the
-///    log* and play the remaining `games - trainGames` games against
-///    `evalCoach` without recording new states. Tests whether what the bot
-///    learned against one personality transfers to a different one.
+/// 2. Two-phase (5 args). Phase A trains against `trainCoach` for
+///    `trainGames` games (recording). Phase B switches to `evalCoach` for
+///    the remaining games. Phase B's record policy defaults to `freeze`.
 ///      dart run bin/self_play_benchmark.dart 200 42 middle pile 100
+///
+/// 3. Two-phase with explicit policy (6 args). Phase B record policy:
+///      freeze     — phase B never records (artificial, but baseline)
+///      continuous — phase B always records (online learning)
+///      freeze:N   — phase B is frozen for the first N games, then records
+///                   the rest (cold introduction, then learn from losses)
+///      dart run bin/self_play_benchmark.dart 200 42 middle pile 100 continuous
 void main(List<String> args) {
   final games = args.isNotEmpty ? int.parse(args[0]) : 200;
   final seed = args.length > 1 ? int.parse(args[1]) : 42;
   final trainCoachKind = args.length > 2 ? args[2] : 'middle';
-  final isGeneralizationTest = args.length >= 5;
-  final evalCoachKind = isGeneralizationTest ? args[3] : trainCoachKind;
-  final trainGames = isGeneralizationTest ? int.parse(args[4]) : games;
+  final isTwoPhase = args.length >= 5;
+  final evalCoachKind = isTwoPhase ? args[3] : trainCoachKind;
+  final trainGames = isTwoPhase ? int.parse(args[4]) : games;
+  final policy =
+      isTwoPhase
+          ? _parsePolicy(args.length > 5 ? args[5] : 'freeze')
+          : const _RecordPolicy('freeze', 0);
   const windowSize = 25;
 
   final rules = ConnectFourRules();
@@ -41,8 +49,8 @@ void main(List<String> args) {
   final trainCoach = _coachFor(trainCoachKind, rules, random);
   final evalCoach = _coachFor(evalCoachKind, rules, random);
 
-  if (isGeneralizationTest) {
-    print('# self-play benchmark (generalization test)');
+  if (isTwoPhase) {
+    print('# self-play benchmark (two-phase)');
     print('# trainee     = CloneBrain (random fallback) on side -1');
     print('# train coach = $trainCoachKind on side +1, moves first');
     print('# eval coach  = $evalCoachKind on side +1, moves first');
@@ -50,6 +58,7 @@ void main(List<String> args) {
       '# train games = $trainGames, eval games = ${games - trainGames}, '
       'seed = $seed',
     );
+    print('# eval policy = ${policy.describe}');
   } else {
     print('# self-play benchmark');
     print('# trainee = CloneBrain (random fallback) on side -1');
@@ -63,16 +72,20 @@ void main(List<String> args) {
   final outcomes = <int>[];
   final plies = <int>[];
 
+  final phases = <String>[];
   for (var g = 0; g < games; g++) {
     final inTraining = g < trainGames;
     final coach = inTraining ? trainCoach : evalCoach;
+    final record = inTraining || policy.recordsAtEvalGame(g - trainGames);
+    final phase = inTraining ? 'train' : (record ? 'learn' : 'eval');
+    phases.add(phase);
     final result = _playGame(
       rules,
       brain,
       coach,
       log,
       gameIndex: g,
-      record: inTraining,
+      record: record,
     );
     outcomes.add(result.winner);
     plies.add(result.plies);
@@ -81,7 +94,7 @@ void main(List<String> args) {
             ? 0.0
             : result.traineeCandidatesTotal / result.traineeMoves;
     print(
-      '${g + 1},${inTraining ? 'train' : 'eval'},${result.winner},'
+      '${g + 1},$phase,${result.winner},'
       '${result.plies},${result.traineeFallbackMoves},'
       '${candAvg.toStringAsFixed(1)}',
     );
@@ -90,21 +103,90 @@ void main(List<String> args) {
   print('');
   _printWindowStats(outcomes, plies, windowSize);
   print('');
-  if (isGeneralizationTest) {
+  if (isTwoPhase) {
     _printPhaseSummary(
-      label: 'training summary ($trainCoachKind)',
+      label: 'training summary ($trainCoachKind, recording)',
       outcomes: outcomes.sublist(0, trainGames),
       plies: plies.sublist(0, trainGames),
     );
-    print('');
-    _printPhaseSummary(
-      label: 'evaluation summary ($evalCoachKind, frozen log)',
-      outcomes: outcomes.sublist(trainGames),
-      plies: plies.sublist(trainGames),
-    );
+    // For phase B, break out the frozen and learning sub-segments separately
+    // when the policy mixes them.
+    final frozenIndices = <int>[];
+    final learningIndices = <int>[];
+    for (var i = trainGames; i < games; i++) {
+      if (phases[i] == 'eval') {
+        frozenIndices.add(i);
+      } else {
+        learningIndices.add(i);
+      }
+    }
+    if (frozenIndices.isNotEmpty) {
+      print('');
+      _printPhaseSummary(
+        label: 'eval (frozen) summary ($evalCoachKind)',
+        outcomes: [for (final i in frozenIndices) outcomes[i]],
+        plies: [for (final i in frozenIndices) plies[i]],
+      );
+    }
+    if (learningIndices.isNotEmpty) {
+      print('');
+      _printPhaseSummary(
+        label: 'eval (learning) summary ($evalCoachKind, recording)',
+        outcomes: [for (final i in learningIndices) outcomes[i]],
+        plies: [for (final i in learningIndices) plies[i]],
+      );
+    }
   } else {
     _printSummary(outcomes, plies);
   }
+}
+
+class _RecordPolicy {
+  /// One of: 'freeze', 'continuous', 'thaw'.
+  final String name;
+
+  /// Number of games to keep frozen at the start of phase B before
+  /// recording resumes (only meaningful for 'thaw'). 0 for the others.
+  final int freezeFor;
+
+  const _RecordPolicy(this.name, this.freezeFor);
+
+  String get describe {
+    switch (name) {
+      case 'freeze':
+        return 'freeze (eval phase never records)';
+      case 'continuous':
+        return 'continuous (eval phase always records)';
+      case 'thaw':
+        return 'freeze:$freezeFor (frozen for $freezeFor games, then records)';
+    }
+    return name;
+  }
+
+  /// Whether the i-th eval-phase game (0-indexed within phase B) records.
+  bool recordsAtEvalGame(int i) {
+    switch (name) {
+      case 'freeze':
+        return false;
+      case 'continuous':
+        return true;
+      case 'thaw':
+        return i >= freezeFor;
+    }
+    return false;
+  }
+}
+
+_RecordPolicy _parsePolicy(String s) {
+  if (s == 'freeze') return const _RecordPolicy('freeze', 0);
+  if (s == 'continuous') return const _RecordPolicy('continuous', 0);
+  if (s.startsWith('freeze:')) {
+    final n = int.parse(s.substring('freeze:'.length));
+    return _RecordPolicy('thaw', n);
+  }
+  throw ArgumentError(
+    'Unknown policy: "$s" (try freeze, continuous, freeze:N)',
+  );
 }
 
 class _GameResult {
