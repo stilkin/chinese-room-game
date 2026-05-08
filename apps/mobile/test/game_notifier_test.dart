@@ -62,6 +62,87 @@ void main() {
     expect(f.notifier.currentSide, 1);
     expect(f.notifier.outcome, isNull);
     expect(f.notifier.isPlayerTurn, true);
+    expect(f.notifier.hasOngoingGame, true);
+  });
+
+  test('hasOngoingGame is false on a fresh fixture', () async {
+    expect(f.notifier.hasOngoingGame, false);
+  });
+
+  test('hasOngoingGame flips to false at game end', () async {
+    await f.notifier.setFallback(FallbackStrategy.edgeFocus);
+    await f.notifier.startNewGame();
+    for (var i = 0; i < 4; i++) {
+      await f.notifier.playerMove(3);
+      await _settle(f.notifier);
+    }
+    expect(f.notifier.outcome, 1);
+    expect(f.notifier.hasOngoingGame, false);
+  });
+
+  test('startNewGame deletes the prior ongoing game', () async {
+    await f.notifier.startNewGame();
+    final firstId = (await f.db.findOngoingGame())!;
+    await f.notifier.playerMove(3);
+    await _settle(f.notifier);
+    expect((await f.db.loadStatesForGame(firstId)), isNotEmpty);
+
+    await f.notifier.startNewGame();
+    final secondId = (await f.db.findOngoingGame())!;
+
+    expect(secondId, isNot(firstId));
+    expect(await f.db.loadStatesForGame(firstId), isEmpty);
+    expect(f.log.states.where((s) => s.gameId == firstId), isEmpty);
+  });
+
+  test('resumeLastGame replays moves and restores side parity', () async {
+    await f.notifier.startNewGame();
+    await f.notifier.playerMove(3);
+    await _settle(f.notifier);
+    await f.notifier.playerMove(4);
+    await _settle(f.notifier);
+    final ongoingId = (await f.db.findOngoingGame())!;
+    final priorPly = f.notifier.currentSide; // capture for sanity
+
+    // Build a fresh notifier on the same DB to simulate app restart.
+    final brain = CloneBrain(rules: ConnectFourRules(), log: GameLog());
+    final fresh = GameNotifier(
+      rules: ConnectFourRules(),
+      log: GameLog(),
+      brain: brain,
+      db: f.db,
+    );
+    await fresh.init();
+
+    expect(fresh.hasOngoingGame, true);
+    await fresh.resumeLastGame();
+
+    // After resume: display board has the player's and clone's pieces in
+    // their played columns; ply equals stored count; side parity follows.
+    final stored = await f.db.loadStatesForGame(ongoingId);
+    expect(fresh.displayBoard, isNot(Board(6, 7))); // not blank
+    expect(fresh.currentSide, stored.length.isEven ? 1 : -1);
+    expect(fresh.outcome, isNull);
+    expect(priorPly, isNotNull); // (use captured value to avoid lint)
+  });
+
+  test('resumeLastGame on empty states clears the orphan and throws', () async {
+    // Insert an ongoing game with NO states (corrupt scenario).
+    await f.db.insertGame('orphan');
+
+    final brain = CloneBrain(rules: ConnectFourRules(), log: GameLog());
+    final fresh = GameNotifier(
+      rules: ConnectFourRules(),
+      log: GameLog(),
+      brain: brain,
+      db: f.db,
+    );
+    await fresh.init();
+    expect(fresh.hasOngoingGame, true);
+
+    await expectLater(fresh.resumeLastGame(), throwsA(isA<StateError>()));
+    expect(fresh.hasOngoingGame, false);
+    expect(await f.db.findOngoingGame(), isNull);
   });
 
   test('playerMove triggers clone turn and persists both moves', () async {

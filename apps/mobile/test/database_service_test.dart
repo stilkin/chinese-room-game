@@ -133,6 +133,73 @@ void main() {
     expect(await service.getGamesPlayedCount(), 0);
   });
 
+  test('findOngoingGame returns null when no games exist', () async {
+    expect(await service.findOngoingGame(), isNull);
+  });
+
+  test('findOngoingGame returns null when every game has an outcome', () async {
+    await service.insertGame('g1');
+    await service.updateGameOutcome('g1', 1, 5);
+    await service.insertGame('g2');
+    await service.updateGameOutcome('g2', -1, 7);
+    expect(await service.findOngoingGame(), isNull);
+  });
+
+  test('findOngoingGame returns the single ongoing game', () async {
+    await service.insertGame('g1');
+    await service.updateGameOutcome('g1', 1, 5);
+    await service.insertGame('g2'); // ongoing
+    expect(await service.findOngoingGame(), 'g2');
+  });
+
+  test(
+    'findOngoingGame returns most recent when multiple ongoing rows',
+    () async {
+      await service.insertGame('older');
+      // Force a deterministic gap so the more-recent insert wins by started_at.
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      await service.insertGame('newer');
+      expect(await service.findOngoingGame(), 'newer');
+    },
+  );
+
+  test('loadStatesForGame returns rows ordered by ply', () async {
+    await service.insertGameState(_state(gameId: 'g1', ply: 2, movePlayed: 4));
+    await service.insertGameState(_state(gameId: 'g1', ply: 0, movePlayed: 3));
+    await service.insertGameState(_state(gameId: 'g1', ply: 1, movePlayed: 0));
+    await service.insertGameState(_state(gameId: 'g2', ply: 0, movePlayed: 5));
+
+    final result = await service.loadStatesForGame('g1');
+    expect(result, hasLength(3));
+    expect(result.map((s) => s.ply), [0, 1, 2]);
+    expect(result.every((s) => s.gameId == 'g1'), true);
+  });
+
+  test('deleteGame removes both the games row and its game_states', () async {
+    await service.insertGame('g1');
+    await service.insertGameState(_state(gameId: 'g1', ply: 0, movePlayed: 3));
+    await service.insertGameState(_state(gameId: 'g1', ply: 1, movePlayed: 4));
+    await service.insertGame('g2');
+    await service.insertGameState(_state(gameId: 'g2', ply: 0, movePlayed: 1));
+
+    await service.deleteGame('g1');
+
+    expect(await service.findOngoingGame(), 'g2');
+    final remaining = await service.loadAllGameStates();
+    expect(remaining, hasLength(1));
+    expect(remaining.first.gameId, 'g2');
+  });
+
+  test('deleteGame is a no-op on a missing gameId', () async {
+    await service.insertGame('g1');
+    await service.insertGameState(_state(gameId: 'g1', ply: 0, movePlayed: 3));
+
+    await service.deleteGame('does-not-exist');
+
+    expect(await service.findOngoingGame(), 'g1');
+    expect(await service.loadAllGameStates(), hasLength(1));
+  });
+
   test(
     'replaceAllStatesForGameAtomic swaps every row of the game atomically',
     () async {

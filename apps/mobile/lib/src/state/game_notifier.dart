@@ -20,6 +20,7 @@ class GameNotifier extends ChangeNotifier {
   bool _isCloneThinking = false;
   int _gamesPlayed = 0;
   FallbackStrategy _fallback;
+  bool _hasOngoingGame = false;
 
   GameNotifier({
     required this.rules,
@@ -39,6 +40,7 @@ class GameNotifier extends ChangeNotifier {
   bool get isPlayerTurn =>
       _currentSide == 1 && _outcome == null && !_isCloneThinking;
   FallbackStrategy get fallback => _fallback;
+  bool get hasOngoingGame => _hasOngoingGame;
 
   Future<void> init() async {
     final loaded = await db.loadAllGameStates();
@@ -48,10 +50,22 @@ class GameNotifier extends ChangeNotifier {
     _fallback = await db.loadFallback();
     _brain = CloneBrain(rules: rules, log: log, fallback: _fallback);
     _gamesPlayed = await db.getGamesPlayedCount();
+    final ongoingId = await db.findOngoingGame();
+    if (ongoingId != null) {
+      _gameId = ongoingId;
+      _hasOngoingGame = true;
+    }
     notifyListeners();
   }
 
   Future<void> startNewGame() async {
+    // Single-slot policy: at most one ongoing game. Wipe any prior one
+    // before creating a new one. Caller (start screen) is responsible for
+    // user confirmation when an ongoing game exists.
+    if (_hasOngoingGame && _gameId.isNotEmpty) {
+      await db.deleteGame(_gameId);
+      log.states.removeWhere((s) => s.gameId == _gameId);
+    }
     _displayBoard = Board(rules.rows, rules.cols);
     _currentSide = 1;
     _outcome = null;
@@ -60,7 +74,45 @@ class GameNotifier extends ChangeNotifier {
     _isCloneThinking = false;
     _gameId = DateTime.now().microsecondsSinceEpoch.toString();
     await db.insertGame(_gameId);
+    _hasOngoingGame = true;
     notifyListeners();
+  }
+
+  Future<void> resumeLastGame() async {
+    final id = await db.findOngoingGame();
+    if (id == null) {
+      _hasOngoingGame = false;
+      notifyListeners();
+      throw StateError('No ongoing game to resume');
+    }
+    final states = await db.loadStatesForGame(id);
+    if (states.isEmpty) {
+      await db.deleteGame(id);
+      _hasOngoingGame = false;
+      notifyListeners();
+      throw StateError('Ongoing game has no moves; record cleared');
+    }
+    try {
+      var board = Board(rules.rows, rules.cols);
+      for (final s in states) {
+        final mover = s.ply.isEven ? 1 : -1;
+        board = rules.applyMove(board, s.movePlayed, mover);
+      }
+      _displayBoard = board;
+      _gameId = id;
+      _ply = states.length;
+      _currentSide = _ply.isEven ? 1 : -1;
+      _outcome = null;
+      _narration = '';
+      _isCloneThinking = false;
+      _hasOngoingGame = true;
+      notifyListeners();
+    } catch (e) {
+      await db.deleteGame(id);
+      _hasOngoingGame = false;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> playerMove(int col) async {
@@ -129,6 +181,7 @@ class GameNotifier extends ChangeNotifier {
     }
 
     _gamesPlayed += 1;
+    _hasOngoingGame = false;
   }
 
   Future<void> _invertCurrentGameToWinnerPerspective() async {
@@ -151,6 +204,8 @@ class GameNotifier extends ChangeNotifier {
     await db.deleteAllData();
     log.states.clear();
     _gamesPlayed = 0;
+    _hasOngoingGame = false;
+    _gameId = '';
     notifyListeners();
   }
 }

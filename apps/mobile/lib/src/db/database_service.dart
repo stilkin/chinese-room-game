@@ -143,6 +143,39 @@ class DatabaseService {
     return rows.map(_rowToGameState).toList();
   }
 
+  Future<String?> findOngoingGame() async {
+    final rows = await db.query(
+      'games',
+      columns: ['game_id'],
+      where: 'outcome IS NULL',
+      orderBy: 'started_at DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['game_id'] as String;
+  }
+
+  Future<List<GameState>> loadStatesForGame(String gameId) async {
+    final rows = await db.query(
+      'game_states',
+      where: 'game_id = ?',
+      whereArgs: [gameId],
+      orderBy: 'ply ASC',
+    );
+    return rows.map(_rowToGameState).toList();
+  }
+
+  Future<void> deleteGame(String gameId) async {
+    await db.transaction((txn) async {
+      await txn.delete(
+        'game_states',
+        where: 'game_id = ?',
+        whereArgs: [gameId],
+      );
+      await txn.delete('games', where: 'game_id = ?', whereArgs: [gameId]);
+    });
+  }
+
   Future<void> replaceAllStatesForGameAtomic(
     String gameId,
     List<GameState> replacements,
