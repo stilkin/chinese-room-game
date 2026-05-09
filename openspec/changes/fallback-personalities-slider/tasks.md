@@ -63,7 +63,7 @@
 
 - [x] 8.1 `dart format && dart analyze && dart test` clean in `packages/game_engine/` (98 tests pass).
 - [x] 8.2 `flutter analyze && flutter test` clean in `apps/mobile/` (36 tests pass).
-- [ ] 8.3 Pre-commit hook passes.
+- [x] 8.3 Pre-commit hook passes.
 - [ ] 8.4 Manual smoke on device:
   - Install over the previous build. Open Settings. Confirm the slider appears at Stacker (legacy values silently remap; fresh installs default to Stacker).
   - Drag through all five positions; confirm name + blurb update live; close and reopen Settings to verify persistence.
