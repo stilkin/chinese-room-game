@@ -25,6 +25,12 @@ class GameNotifier extends ChangeNotifier {
   List<int> _recentOutcomes = const [];
   FallbackStrategy _fallback;
   bool _hasOngoingGame = false;
+  // Latest move info — used by the UI to animate the most recent piece
+  // dropping in. -1 when no move has been made yet (start of a game).
+  int _lastMoveRow = -1;
+  int _lastMoveCol = -1;
+  int _lastMoveSide = 0;
+  int _moveCounter = 0;
 
   GameNotifier({
     required this.rules,
@@ -49,6 +55,10 @@ class GameNotifier extends ChangeNotifier {
       _currentSide == 1 && _outcome == null && !_isCloneThinking;
   FallbackStrategy get fallback => _fallback;
   bool get hasOngoingGame => _hasOngoingGame;
+  int get lastMoveRow => _lastMoveRow;
+  int get lastMoveCol => _lastMoveCol;
+  int get lastMoveSide => _lastMoveSide;
+  int get moveCounter => _moveCounter;
 
   Future<void> init() async {
     final loaded = await db.loadAllGameStates();
@@ -89,6 +99,9 @@ class GameNotifier extends ChangeNotifier {
     _narration = '';
     _ply = 0;
     _isCloneThinking = false;
+    _lastMoveRow = -1;
+    _lastMoveCol = -1;
+    _lastMoveSide = 0;
     _gameId = DateTime.now().microsecondsSinceEpoch.toString();
     await db.insertGame(_gameId);
     _hasOngoingGame = true;
@@ -122,6 +135,9 @@ class GameNotifier extends ChangeNotifier {
       _outcome = null;
       _narration = '';
       _isCloneThinking = false;
+      _lastMoveRow = -1;
+      _lastMoveCol = -1;
+      _lastMoveSide = 0;
       _hasOngoingGame = true;
       notifyListeners();
     } catch (e) {
@@ -174,6 +190,18 @@ class GameNotifier extends ChangeNotifier {
 
   GameState _applySync(int col, int side) {
     _displayBoard = rules.applyMove(_displayBoard, col, side);
+    // Find the row the new piece landed on so the UI can animate the drop.
+    var landingRow = -1;
+    for (var r = 0; r < _displayBoard.rows; r++) {
+      if (_displayBoard.get(r, col) == side) {
+        landingRow = r;
+        break;
+      }
+    }
+    _lastMoveRow = landingRow;
+    _lastMoveCol = col;
+    _lastMoveSide = side;
+    _moveCounter += 1;
     final state = _brain.createState(
       board: _displayBoard,
       movePlayed: col,

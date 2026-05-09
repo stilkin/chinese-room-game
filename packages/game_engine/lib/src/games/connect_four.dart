@@ -79,6 +79,65 @@ class ConnectFourRules extends GameRules {
     return 0;
   }
 
+  /// If the board contains a four-in-a-row, returns the list of four
+  /// `(row, col)` cells forming it. Returns null when there's no winner.
+  /// Useful for UI that wants to highlight the winning line.
+  List<({int row, int col})>? findWinningCells(Board board) {
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        final v = board.get(r, c);
+        if (v == 0) continue;
+        if (c + 3 < cols &&
+            v == board.get(r, c + 1) &&
+            v == board.get(r, c + 2) &&
+            v == board.get(r, c + 3)) {
+          return [
+            (row: r, col: c),
+            (row: r, col: c + 1),
+            (row: r, col: c + 2),
+            (row: r, col: c + 3),
+          ];
+        }
+        if (r + 3 < rows &&
+            v == board.get(r + 1, c) &&
+            v == board.get(r + 2, c) &&
+            v == board.get(r + 3, c)) {
+          return [
+            (row: r, col: c),
+            (row: r + 1, col: c),
+            (row: r + 2, col: c),
+            (row: r + 3, col: c),
+          ];
+        }
+        if (r + 3 < rows &&
+            c + 3 < cols &&
+            v == board.get(r + 1, c + 1) &&
+            v == board.get(r + 2, c + 2) &&
+            v == board.get(r + 3, c + 3)) {
+          return [
+            (row: r, col: c),
+            (row: r + 1, col: c + 1),
+            (row: r + 2, col: c + 2),
+            (row: r + 3, col: c + 3),
+          ];
+        }
+        if (r + 3 < rows &&
+            c - 3 >= 0 &&
+            v == board.get(r + 1, c - 1) &&
+            v == board.get(r + 2, c - 2) &&
+            v == board.get(r + 3, c - 3)) {
+          return [
+            (row: r, col: c),
+            (row: r + 1, col: c - 1),
+            (row: r + 2, col: c - 2),
+            (row: r + 3, col: c - 3),
+          ];
+        }
+      }
+    }
+    return null;
+  }
+
   @override
   DiffusionKernel get diffusionKernel => ConnectFourDiffusion();
 
