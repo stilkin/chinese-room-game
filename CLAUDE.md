@@ -43,7 +43,7 @@ dart run                           # Run in development
 
 ### Monorepo layout (Dart pub workspaces)
 
-- `packages/game_engine/` — Pure Dart library, no Flutter dependency. Contains all game logic: board representation, rules, canonicalization, Zobrist hashing, diffusion kernels, similarity search, move selection, and clone narration.
+- `packages/game_engine/` — Pure Dart library, no Flutter dependency. Contains all game logic: board representation, rules, perspective/mirror transforms, diffusion kernels, similarity search, move selection, and clone narration.
 - `apps/mobile/` — Flutter app. Depends on game_engine.
 - `apps/web/` — Flutter Web frontend (phase 2). Depends on game_engine.
 - `server/` — Dart backend (phase 3). Depends on game_engine.
@@ -53,24 +53,26 @@ dart run                           # Run in development
 **Board representation:** 2D array of signed bytes (`Int8`). Values are -1/0/+1 for most games; chess uses piece-value weights (pawn=1, knight/bishop=3, rook=5, queen=9, king=20). Negative = opponent.
 
 **Clone decision pipeline:**
-1. Filter stored states by ply count (+-2 of current)
-2. Zobrist hash lookup for exact matches (XOR of random 64-bit ints per piece/square, incrementally updated)
-3. Diffused hash comparison via Hamming distance for fuzzy matches
-4. Weight candidates: wins > draws > losses, fewer moves to win is better
-5. Select move, generate narration text
+1. Run four queries against stored rows: perspective × mirror (`flipPerspective(current)` and unchanged, each also mirrored). The per-game `CandidateFilter` (e.g. `±2 ply window` for Connect Four) trims the candidate pool, widening adaptively.
+2. Rank survivors by L1 distance over the quantized Int8 diffused image; cap at top-K per query (K=20).
+3. Outcome filter: keep `outcome=+1` rows from the perspective-flipped queries (own past wins), `outcome=-1` rows from the unflipped queries (own past losses); discard cross-side rows; drop candidates beyond the per-game L1 ceiling.
+4. Accumulate `weight × candidate.diffusedImage` (mirrored if from a mirror query) into a single signed heatmap, where `weight = 1/(1+movesToEnd) × 1/(1+l1Distance)`. Weights are always positive; the candidate image's natural sign carries the win/loss lesson.
+5. Score each legal move via the per-game `MoveScorer`; pick the highest. If the chosen move's score is `≤ 0`, fall back to the personality strategy (the all-losing guard).
+6. Generate narration text reporting candidate game count.
 
-**Diffusion kernels** are the game-specific core — each game defines how piece influence spreads across the board (along winning directions for Connect Four, along legal move paths for chess, spatial for Go). 2-3 diffusion steps. The diffused board is an influence map used for perceptual-style hashing.
+**Diffusion kernels** are the game-specific core — each game defines how piece influence spreads across the board (along winning directions for Connect Four, along legal move paths for chess, spatial for Go). 2-3 diffusion steps. The diffused board is an influence map; we quantize it to Int8 (one signed byte per cell) before storage and L1 matching.
 
-**Symmetry canonicalization** happens at write time:
-- Left/right mirror normalization (higher-hash half goes left)
-- Always stored from perspective of side to move
-- Losses stored as wins from opponent perspective (doubles training data)
+**Storage convention** is per-game winner-POV (write-time):
+- Player-won games: rows stored as-is.
+- Bot-won games: every row replaced by `invertState(...)` — board sign-flipped, diffused image recomputed on the flipped board.
+- Draws: rows stored as-is.
+- No write-time mirror normalization — left/right symmetry is handled at read time via the mirror queries above.
 
-**Cold start:** Player picks a fallback personality (random, middle-focus, edge-focus, pile-focus) that fires when the clone has no relevant data.
+**Cold start:** Player picks a fallback personality via a 5-step slider. Positions: Chaotic (random), Builder (`ownPileAdjacent`), **Stacker (`pileFocus`) — default**, Connector (`greedyConnect`), Sentinel (`greedyConnectDefense`). The fallback fires when the clone has no relevant data, when retrieval returns nothing past the L1 ceiling, or when the all-losing guard trips. `middleFocus` survives in the engine for benchmark use only — never surfaced via UI.
 
 ### Data flow
 
-Each move is stored as `(canonical_board, zobrist_hash, diffused_hash, move, side, game_id)`. When a game ends, `outcome` and `moves_to_end` are backfilled across all states in that game.
+Each move is stored as `(board_blob, diffused_image, move_played, ply, side, game_id, total_material, material_balance, outcome, moves_to_end)`. `outcome` and `moves_to_end` are null while a game is in progress and backfilled across every row of the game when it ends. SQLite schema is at v3.
 
 ## OpenSpec Workflow
 
