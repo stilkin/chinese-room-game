@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+Defines the end-of-game UI (outcome, replay options).
+
+## Requirements
 
 ### Requirement: Outcome display
 The post-game screen SHALL display the game outcome: "You win!", "Clone wins!", or "Draw!"

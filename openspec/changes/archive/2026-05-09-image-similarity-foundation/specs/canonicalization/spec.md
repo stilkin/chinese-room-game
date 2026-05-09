@@ -18,6 +18,8 @@ After backfill, the DB invariant holds: every stored row's `outcome=+1` correspo
 
 (Existing scenarios for player-won-as-is, bot-won-flipped, draw-as-is, outcome-meaning-across-rows are retained from the prior spec — they don't reference the diffused-bit-hash specifically and survive the change unchanged.)
 
+## ADDED Requirements
+
 ### Requirement: Four-query search at read time
 At every move decision, the bot SHALL run **four** independent searches against the stored data, with appropriate perspective and mirror transforms applied to the query, and combine the results:
 
@@ -40,7 +42,7 @@ Cross-side rows (Q_A's `outcome=-1`, Q_B's `outcome=+1`, etc.) SHALL be ignored 
 - **WHEN** the four queries return their results
 - **THEN** the brain SHALL keep only `outcome=+1` rows from `Q_A` and `Q_A mirror`, and only `outcome=-1` rows from `Q_B` and `Q_B mirror`; cross-side rows SHALL be discarded
 
-### Requirement: Distance-weighted heatmap accumulation (replaces Hamming-distance vote)
+### Requirement: Distance-weighted heatmap accumulation
 Each candidate's weight SHALL be computed as:
 ```text
 weight = (1 / (1 + movesToEnd)) × (1 / (1 + l1Distance))
@@ -66,3 +68,7 @@ The legal move with the highest heatmap score (via `MoveScorer`) is selected. If
 ### Requirement: Two-query search at read time
 **Reason**: Replaced by the four-query variant above. The two-query design covered winner-POV but not left/right symmetry; with image-distance retrieval, mirror queries are cheap and useful. Left/right symmetry is recovered without re-introducing write-time mirror canonicalization.
 **Migration**: Callers running two queries upgrade to four; mirror queries require explicit move-untransform and image-untransform handling. Stored data is unchanged (the storage convention was already mirror-blind).
+
+### Requirement: Sign-aware distance-weighted vote
+**Reason**: Replaced by `Distance-weighted heatmap accumulation`. The sign multiplier on the weight double-counted and inverted the loss signal; the candidate image's natural sign now carries the win/loss lesson on its own.
+**Migration**: Callers using `VoteByMoveStrategy` upgrade to `InfluenceOverlayStrategy`; weights become positive-only.

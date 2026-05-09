@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+Defines how the game board is encoded in memory and at rest.
+
+## Requirements
 
 ### Requirement: Board is a 2D signed integer array
 The system SHALL represent all game boards as `List<List<int>>` where values are signed integers. Zero represents an empty cell. Positive values represent the current player's pieces, negative values represent the opponent's pieces.

@@ -92,9 +92,9 @@
 
 ## 12. Manual smoke on device
 
-- [ ] 12.1 Install over the previous build. Confirm DB migration wipes old games (settings preserved).
-- [ ] 12.2 Play 5–10 games. Confirm clone responses are sensible, narrations make sense, no crashes.
-- [ ] 12.3 Resume mid-game still works.
+- [x] 12.1 Install over the previous build. Confirm DB migration wipes old games (settings preserved).
+- [x] 12.2 Play 5–10 games. Confirm clone responses are sensible, narrations make sense, no crashes.
+- [x] 12.3 Resume mid-game still works.
 
 ## 13. Spec sync at archive
 
