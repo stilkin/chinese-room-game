@@ -70,10 +70,12 @@ void main() {
   });
 
   test('hasOngoingGame flips to false at game end', () async {
-    await f.notifier.setFallback(FallbackStrategy.edgeFocus);
+    // middleFocus keeps the clone planted in the centre so the player can
+    // stack col 0 four times and win vertically without interference.
+    await f.notifier.setFallback(FallbackStrategy.middleFocus);
     await f.notifier.startNewGame();
     for (var i = 0; i < 4; i++) {
-      await f.notifier.playerMove(3);
+      await f.notifier.playerMove(0);
       await _settle(f.notifier);
     }
     expect(f.notifier.outcome, 1);
@@ -160,15 +162,15 @@ void main() {
 
   test('vertical win triggers _endGame and increments gamesPlayed', () async {
     await f.notifier.startNewGame();
-    await f.notifier.setFallback(FallbackStrategy.edgeFocus);
+    await f.notifier.setFallback(FallbackStrategy.middleFocus);
 
     for (var i = 0; i < 3; i++) {
-      await f.notifier.playerMove(3);
+      await f.notifier.playerMove(0);
       await _settle(f.notifier);
     }
     expect(f.notifier.outcome, isNull);
 
-    await f.notifier.playerMove(3);
+    await f.notifier.playerMove(0);
     await _settle(f.notifier);
 
     expect(f.notifier.outcome, 1);
@@ -183,11 +185,11 @@ void main() {
   });
 
   test('player-won game is stored as-is (no flip)', () async {
-    await f.notifier.setFallback(FallbackStrategy.edgeFocus);
+    await f.notifier.setFallback(FallbackStrategy.middleFocus);
     await f.notifier.startNewGame();
 
     for (var i = 0; i < 4; i++) {
-      await f.notifier.playerMove(3);
+      await f.notifier.playerMove(0);
       await _settle(f.notifier);
     }
     expect(f.notifier.outcome, 1);
@@ -197,9 +199,9 @@ void main() {
     expect(loaded, isNotEmpty);
 
     // Player won → no perspective flip. Stored boards match display POV:
-    // (5,3) was the player's first move at +1 in display, so the ply-0
+    // (5,0) was the player's first move at +1 in display, so the ply-0
     // board has +1 there.
-    expect(loaded.first.board.get(5, 3), 1);
+    expect(loaded.first.board.get(5, 0), 1);
 
     // Even-ply rows are player moves: outcome=+1 (winner moved).
     // Odd-ply rows are clone moves: outcome=-1 (loser moved).
@@ -307,9 +309,9 @@ void main() {
 
   test('deleteAllData clears in-memory log and games count', () async {
     await f.notifier.startNewGame();
-    await f.notifier.setFallback(FallbackStrategy.edgeFocus);
+    await f.notifier.setFallback(FallbackStrategy.middleFocus);
     for (var i = 0; i < 4; i++) {
-      await f.notifier.playerMove(3);
+      await f.notifier.playerMove(0);
       await _settle(f.notifier);
       if (f.notifier.outcome != null) break;
     }
@@ -325,9 +327,9 @@ void main() {
   test(
     'setFallback persists and rebuilds the brain with new strategy',
     () async {
-      await f.notifier.setFallback(FallbackStrategy.middleFocus);
-      expect(f.notifier.fallback, FallbackStrategy.middleFocus);
-      expect(await f.db.loadFallback(), FallbackStrategy.middleFocus);
+      await f.notifier.setFallback(FallbackStrategy.greedyConnect);
+      expect(f.notifier.fallback, FallbackStrategy.greedyConnect);
+      expect(await f.db.loadFallback(), FallbackStrategy.greedyConnect);
     },
   );
 }

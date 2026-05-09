@@ -3,60 +3,126 @@ import 'package:game_engine/game_engine.dart';
 
 import '../app_scope.dart';
 import '../state/game_notifier.dart';
+import '../theme.dart';
 
-const _fallbackLabels = {
-  FallbackStrategy.random: 'Random',
-  FallbackStrategy.middleFocus: 'Middle Focus',
-  FallbackStrategy.edgeFocus: 'Edge Focus',
-  FallbackStrategy.pileFocus: 'Pile Focus',
-};
+class _PersonalityLevel {
+  final FallbackStrategy strategy;
+  final String name;
+  final String blurb;
+  const _PersonalityLevel(this.strategy, this.name, this.blurb);
+}
 
-class SettingsScreen extends StatelessWidget {
+const List<_PersonalityLevel> _kSliderLevels = [
+  _PersonalityLevel(
+    FallbackStrategy.random,
+    'Chaotic',
+    'plays anywhere. no plan.',
+  ),
+  _PersonalityLevel(
+    FallbackStrategy.ownPileAdjacent,
+    'Builder',
+    'builds next to its own pieces.',
+  ),
+  _PersonalityLevel(
+    FallbackStrategy.pileFocus,
+    'Stacker',
+    'stacks the tallest pile.',
+  ),
+  _PersonalityLevel(
+    FallbackStrategy.greedyConnect,
+    'Connector',
+    'plays for longer chains.',
+  ),
+  _PersonalityLevel(
+    FallbackStrategy.greedyConnectDefense,
+    'Sentinel',
+    'plays for chains. blocks losses.',
+  ),
+];
+
+const int _kDefaultSliderIndex = 2; // Stacker
+
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  late int _position;
+
+  @override
+  void initState() {
+    super.initState();
+    _position = _initialPosition(AppScope.of(context).fallback);
+  }
+
+  int _initialPosition(FallbackStrategy current) {
+    final idx = _kSliderLevels.indexWhere((l) => l.strategy == current);
+    return idx == -1 ? _kDefaultSliderIndex : idx;
+  }
 
   @override
   Widget build(BuildContext context) {
     final notifier = AppScope.of(context);
+    final theme = Theme.of(context);
+    final level = _kSliderLevels[_position];
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
               child: Text(
                 'Fallback personality',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: theme.textTheme.headlineMedium,
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Text(
-                'Used by the clone when it has no relevant data.',
-                style: TextStyle(color: Colors.black54),
+                'used by the clone when it has no relevant data.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+            const SizedBox(height: 32),
+            Center(
+              child: Text(
+                level.name,
+                style: theme.textTheme.displayMedium,
+                textAlign: TextAlign.center,
               ),
             ),
             const SizedBox(height: 8),
-            RadioGroup<FallbackStrategy>(
-              groupValue: notifier.fallback,
-              onChanged: (v) {
-                if (v != null) notifier.setFallback(v);
-              },
-              child: Column(
-                children: [
-                  for (final entry in _fallbackLabels.entries)
-                    RadioListTile<FallbackStrategy>(
-                      title: Text(entry.value),
-                      value: entry.key,
-                    ),
-                ],
+            Center(
+              child: Text(
+                level.blurb,
+                style: theme.textTheme.bodyLarge,
+                textAlign: TextAlign.center,
               ),
             ),
-            const Divider(height: 32),
+            const SizedBox(height: 16),
+            Slider(
+              value: _position.toDouble(),
+              min: 0,
+              max: (_kSliderLevels.length - 1).toDouble(),
+              divisions: _kSliderLevels.length - 1,
+              label: level.name,
+              onChanged: (v) {
+                setState(() => _position = v.round());
+              },
+              onChangeEnd: (v) {
+                final idx = v.round();
+                notifier.setFallback(_kSliderLevels[idx].strategy);
+              },
+            ),
+            const Divider(height: 48),
             FilledButton.tonal(
-              style: FilledButton.styleFrom(foregroundColor: Colors.red),
+              style: FilledButton.styleFrom(foregroundColor: PiYingTheme.red),
               onPressed: () => _confirmDelete(context, notifier),
               child: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
@@ -86,7 +152,7 @@ class SettingsScreen extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: PiYingTheme.red),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Delete'),
           ),

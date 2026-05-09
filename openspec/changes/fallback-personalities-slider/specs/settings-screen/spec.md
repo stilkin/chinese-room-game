@@ -7,12 +7,12 @@ The settings screen SHALL allow the player to select a fallback personality for 
 | Position | Strategy                | Name      | Blurb                              |
 |----------|-------------------------|-----------|------------------------------------|
 | 0        | `random`                | Chaotic   | plays anywhere. no plan.           |
-| 1        | `pileFocus`             | Stacker   | stacks the tallest pile.           |
-| 2        | `ownPileAdjacent`       | Builder   | builds next to its own pieces.     |
+| 1        | `ownPileAdjacent`       | Builder   | builds next to its own pieces.     |
+| 2        | `pileFocus`             | Stacker   | stacks the tallest pile.           |
 | 3        | `greedyConnect`         | Connector | plays for longer chains.           |
 | 4        | `greedyConnectDefense`  | Sentinel  | plays for chains. blocks losses.   |
 
-The selection SHALL persist across app restarts. The default for fresh installs SHALL be position 2 (Builder).
+The slider's positions are ordered by behavioural strength as observed in head-to-head self-play, so "further right" reads as both "more complex" and "stronger." The selection SHALL persist across app restarts. The default for fresh installs SHALL be position 2 (Stacker).
 
 #### Scenario: Slider shows current personality name and blurb
 - **WHEN** the player opens the settings screen
@@ -29,11 +29,11 @@ The selection SHALL persist across app restarts. The default for fresh installs 
 
 #### Scenario: Default for fresh installs
 - **WHEN** the player opens the settings screen for the first time on a fresh install
-- **THEN** the slider SHALL be at position 2 (Builder) and no save SHALL have occurred yet
+- **THEN** the slider SHALL be at position 2 (Stacker) and no save SHALL have occurred yet
 
-#### Scenario: Legacy persisted value remapped on read
-- **WHEN** the persisted fallback value is `edgeFocus` or `middleFocus` (no longer user-selectable)
-- **THEN** the settings screen SHALL display the slider at position 2 (Builder) without overwriting storage; the value SHALL be normalised to `ownPileAdjacent` the next time the player makes any selection
+#### Scenario: Legacy or unknown persisted value remapped on read
+- **WHEN** the persisted fallback value is not in the user-facing slider list (e.g. `edgeFocus`, `middleFocus`, or any unrecognised string)
+- **THEN** `loadFallback` SHALL return `pileFocus` and the settings screen SHALL display the slider at position 2 (Stacker)
 
 #### Scenario: Personality affects clone fallback only
 - **WHEN** the clone has relevant past-game data

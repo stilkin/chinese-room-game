@@ -10,7 +10,14 @@ import 'move_selection.dart';
 import 'narration.dart';
 import 'similarity.dart';
 
-enum FallbackStrategy { random, middleFocus, edgeFocus, pileFocus }
+enum FallbackStrategy {
+  random,
+  middleFocus,
+  pileFocus,
+  ownPileAdjacent,
+  greedyConnect,
+  greedyConnectDefense,
+}
 
 /// Per-query cap on candidates that contribute to the heatmap. The matcher
 /// returns all prefilter survivors sorted by L1 distance; we only use the
@@ -259,36 +266,182 @@ class CloneBrain {
       case FallbackStrategy.random:
         return legalMoves[_random.nextInt(legalMoves.length)];
       case FallbackStrategy.middleFocus:
-        final mid = rules.cols ~/ 2;
-        final sorted = [...legalMoves]
-          ..sort((a, b) => (a - mid).abs().compareTo((b - mid).abs()));
-        return sorted.first;
-      case FallbackStrategy.edgeFocus:
-        final mid = rules.cols ~/ 2;
-        final sorted = [...legalMoves]
-          ..sort((a, b) => (b - mid).abs().compareTo((a - mid).abs()));
-        return sorted.first;
+        return _legalClosestToMid(legalMoves);
       case FallbackStrategy.pileFocus:
-        // Highest pile wins; ties broken by closeness to the middle column
-        // (so the empty-board opening lands at the centre instead of col 0).
-        final mid = rules.cols ~/ 2;
-        var bestMove = legalMoves.first;
-        var bestCount = -1;
-        var bestDist = rules.cols;
-        for (final move in legalMoves) {
-          var count = 0;
-          for (var r = 0; r < board.rows; r++) {
-            if (board.get(r, move) != 0) count++;
-          }
-          final dist = (move - mid).abs();
-          if (count > bestCount || (count == bestCount && dist < bestDist)) {
-            bestCount = count;
-            bestMove = move;
-            bestDist = dist;
-          }
-        }
-        return bestMove;
+        return _stackerMove(legalMoves, board);
+      case FallbackStrategy.ownPileAdjacent:
+        return _builderMove(legalMoves, board);
+      case FallbackStrategy.greedyConnect:
+        return _connectorMove(legalMoves, board);
+      case FallbackStrategy.greedyConnectDefense:
+        return _sentinelMove(legalMoves, board);
     }
+  }
+
+  int _legalClosestToMid(List<int> legalMoves) {
+    final mid = rules.cols ~/ 2;
+    final sorted = [...legalMoves]
+      ..sort((a, b) => (a - mid).abs().compareTo((b - mid).abs()));
+    return sorted.first;
+  }
+
+  int _stackerMove(List<int> legalMoves, Board board) {
+    final mid = rules.cols ~/ 2;
+    var bestMove = legalMoves.first;
+    var bestCount = -1;
+    var bestDist = rules.cols;
+    for (final move in legalMoves) {
+      var count = 0;
+      for (var r = 0; r < board.rows; r++) {
+        if (board.get(r, move) != 0) count++;
+      }
+      final dist = (move - mid).abs();
+      if (count > bestCount || (count == bestCount && dist < bestDist)) {
+        bestCount = count;
+        bestMove = move;
+        bestDist = dist;
+      }
+    }
+    return bestMove;
+  }
+
+  int _builderMove(List<int> legalMoves, Board board) {
+    final mid = rules.cols ~/ 2;
+
+    // Find the column with the most own (+1) pieces; ties broken by closeness
+    // to mid, then by lower index for determinism.
+    var cStar = -1;
+    var bestCount = 0;
+    var bestDist = rules.cols;
+    for (var c = 0; c < rules.cols; c++) {
+      var count = 0;
+      for (var r = 0; r < board.rows; r++) {
+        if (board.get(r, c) == 1) count++;
+      }
+      if (count == 0) continue;
+      final dist = (c - mid).abs();
+      if (count > bestCount ||
+          (count == bestCount && dist < bestDist) ||
+          (count == bestCount && dist == bestDist && c < cStar)) {
+        bestCount = count;
+        bestDist = dist;
+        cStar = c;
+      }
+    }
+
+    if (cStar < 0) {
+      // No own pieces yet — open with the centre.
+      return _legalClosestToMid(legalMoves);
+    }
+
+    final candidates = <int>[
+      for (final c in [cStar - 1, cStar + 1])
+        if (c >= 0 && c < rules.cols && legalMoves.contains(c)) c,
+    ];
+
+    if (candidates.isEmpty) return _legalClosestToMid(legalMoves);
+    if (candidates.length == 1) return candidates.first;
+
+    final dLeft = (candidates[0] - mid).abs();
+    final dRight = (candidates[1] - mid).abs();
+    if (dLeft < dRight) return candidates[0];
+    if (dRight < dLeft) return candidates[1];
+    // Equidistant: random tie-break (uses seeded _random for reproducibility).
+    return candidates[_random.nextBool() ? 0 : 1];
+  }
+
+  int _connectorMove(List<int> legalMoves, Board board) {
+    final mid = rules.cols ~/ 2;
+    var bestMove = legalMoves.first;
+    var bestScore = -1;
+    var bestDist = rules.cols;
+    for (final c in legalMoves) {
+      final r = _gravityRow(board, c);
+      final score = _longestRunThrough(board, r, c, side: 1);
+      final dist = (c - mid).abs();
+      if (score > bestScore || (score == bestScore && dist < bestDist)) {
+        bestScore = score;
+        bestMove = c;
+        bestDist = dist;
+      }
+    }
+    return bestMove;
+  }
+
+  int _sentinelMove(List<int> legalMoves, Board board) {
+    final mid = rules.cols ~/ 2;
+    final mustBlock = <int>[];
+    for (final c in legalMoves) {
+      final r = _gravityRow(board, c);
+      // Imagine the *opponent* drops here next; would they reach 4-in-a-row?
+      if (_longestRunThrough(board, r, c, side: -1) >= 4) {
+        mustBlock.add(c);
+      }
+    }
+    if (mustBlock.isEmpty) return _connectorMove(legalMoves, board);
+
+    // Can only block one — pick the most central.
+    var pick = mustBlock.first;
+    var bestDist = (pick - mid).abs();
+    for (final c in mustBlock.skip(1)) {
+      final dist = (c - mid).abs();
+      if (dist < bestDist) {
+        pick = c;
+        bestDist = dist;
+      }
+    }
+    return pick;
+  }
+
+  /// Lowest empty row in [col]. Caller guarantees the column is legal (i.e.
+  /// has at least one empty cell), so the loop always finds one.
+  int _gravityRow(Board board, int col) {
+    for (var r = board.rows - 1; r >= 0; r--) {
+      if (board.get(r, col) == 0) return r;
+    }
+    // Should be unreachable given caller contract.
+    return -1;
+  }
+
+  /// Longest contiguous run of [side] through (row, col), treating that cell
+  /// as if it were [side]. Considers all four standard axes; returns the max.
+  int _longestRunThrough(Board board, int row, int col, {required int side}) {
+    const directions = [
+      [0, 1],
+      [1, 0],
+      [1, 1],
+      [1, -1],
+    ];
+    var best = 1;
+    for (final d in directions) {
+      var len = 1;
+      // Walk forward.
+      var r = row + d[0];
+      var c = col + d[1];
+      while (r >= 0 &&
+          r < board.rows &&
+          c >= 0 &&
+          c < board.cols &&
+          board.get(r, c) == side) {
+        len++;
+        r += d[0];
+        c += d[1];
+      }
+      // Walk backward.
+      r = row - d[0];
+      c = col - d[1];
+      while (r >= 0 &&
+          r < board.rows &&
+          c >= 0 &&
+          c < board.cols &&
+          board.get(r, c) == side) {
+        len++;
+        r -= d[0];
+        c -= d[1];
+      }
+      if (len > best) best = len;
+    }
+    return best;
   }
 }
 

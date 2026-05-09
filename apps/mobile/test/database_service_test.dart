@@ -118,14 +118,39 @@ void main() {
     expect(await service.getGamesPlayedCount(), 1);
   });
 
-  test('fallback config defaults to random and persists', () async {
-    expect(await service.loadFallback(), FallbackStrategy.random);
+  test(
+    'fallback defaults to Stacker and persists user-facing values',
+    () async {
+      expect(await service.loadFallback(), FallbackStrategy.pileFocus);
 
-    await service.saveFallback(FallbackStrategy.edgeFocus);
-    expect(await service.loadFallback(), FallbackStrategy.edgeFocus);
+      for (final s in [
+        FallbackStrategy.random,
+        FallbackStrategy.ownPileAdjacent,
+        FallbackStrategy.pileFocus,
+        FallbackStrategy.greedyConnect,
+        FallbackStrategy.greedyConnectDefense,
+      ]) {
+        await service.saveFallback(s);
+        expect(await service.loadFallback(), s);
+      }
+    },
+  );
 
+  test('fallback maps hidden middleFocus value to Stacker on read', () async {
+    // middleFocus is still in the engine enum (benchmark-only) but isn't
+    // exposed in the slider; loadFallback should silently coerce it.
     await service.saveFallback(FallbackStrategy.middleFocus);
-    expect(await service.loadFallback(), FallbackStrategy.middleFocus);
+    expect(await service.loadFallback(), FallbackStrategy.pileFocus);
+  });
+
+  test('fallback maps unknown / legacy stored value to Stacker', () async {
+    // Simulate legacy data: write a string that no longer corresponds to any
+    // enum value (like the removed `edgeFocus`).
+    await service.db.insert('clone_config', {
+      'key': 'fallback_personality',
+      'value': 'edgeFocus',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    expect(await service.loadFallback(), FallbackStrategy.pileFocus);
   });
 
   test('deleteAllData clears states and games', () async {

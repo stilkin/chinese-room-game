@@ -286,18 +286,32 @@ class DatabaseService {
     );
   }
 
+  /// User-facing fallback strategies (the slider exposes exactly these). Any
+  /// persisted value not in this set — including legacy `edgeFocus` (now
+  /// removed) and `middleFocus` (still in the engine for benchmark use only)
+  /// — is silently mapped to the default.
+  static const _kUserFacingFallbacks = {
+    FallbackStrategy.random,
+    FallbackStrategy.ownPileAdjacent,
+    FallbackStrategy.pileFocus,
+    FallbackStrategy.greedyConnect,
+    FallbackStrategy.greedyConnectDefense,
+  };
+  static const _kDefaultFallback = FallbackStrategy.pileFocus;
+
   Future<FallbackStrategy> loadFallback() async {
     final rows = await db.query(
       'clone_config',
       where: 'key = ?',
       whereArgs: [_kFallbackKey],
     );
-    if (rows.isEmpty) return FallbackStrategy.random;
+    if (rows.isEmpty) return _kDefaultFallback;
     final value = rows.first['value'] as String;
-    return FallbackStrategy.values.firstWhere(
+    final parsed = FallbackStrategy.values.firstWhere(
       (s) => s.name == value,
-      orElse: () => FallbackStrategy.random,
+      orElse: () => _kDefaultFallback,
     );
+    return _kUserFacingFallbacks.contains(parsed) ? parsed : _kDefaultFallback;
   }
 
   Future<void> saveFallback(FallbackStrategy strategy) async {

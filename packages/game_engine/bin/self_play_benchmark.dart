@@ -11,12 +11,20 @@ import 'package:game_engine/game_engine.dart';
 /// Run modes (positional arg count):
 ///
 /// 1. Single-coach (3 args). All games record. Brain learns continuously.
-///      dart run bin/self_play_benchmark.dart 200 42 middle
+///      dart run bin/self_play_benchmark.dart 200 42 builder
 ///
 /// 2. Two-phase (5 args). Phase A trains against `trainCoach` for
 ///    `trainGames` games (recording). Phase B switches to `evalCoach` for
 ///    the remaining games. Phase B's record policy defaults to `freeze`.
-///      dart run bin/self_play_benchmark.dart 200 42 middle pile 100
+///      dart run bin/self_play_benchmark.dart 200 42 builder connector 100
+///
+/// Coach kinds:
+///      chaotic / random        — uniform random legal column
+///      middle                  — closest to centre (benchmark-only baseline)
+///      stacker / pile          — tallest pile, mid-distance tie-break
+///      builder                 — adjacent to own tallest stack
+///      connector               — extends own longest chain
+///      sentinel                — connector + blocks opponent length-4
 ///
 /// 3. Two-phase with explicit policy (6 args). Phase B record policy:
 ///      freeze     — phase B never records (artificial, but baseline)
@@ -281,56 +289,47 @@ _GameResult _playGame(
 }
 
 _CoachFn _coachFor(String kind, ConnectFourRules rules, Random random) {
+  // The named coaches are aliases for fallback strategies. We delegate to a
+  // disposable CloneBrain with an empty log so every move falls through to
+  // the named personality — the engine stays the single source of truth.
+  FallbackStrategy? strategy;
   switch (kind) {
     case 'middle':
-      return (board) {
-        final legal = rules.legalMoves(board);
-        final mid = rules.cols ~/ 2;
-        final sorted = [...legal]
-          ..sort((a, b) => (a - mid).abs().compareTo((b - mid).abs()));
-        return sorted.first;
-      };
+      strategy = FallbackStrategy.middleFocus;
+      break;
     case 'random':
-      return (board) {
-        final legal = rules.legalMoves(board);
-        return legal[random.nextInt(legal.length)];
-      };
-    case 'edge':
-      return (board) {
-        final legal = rules.legalMoves(board);
-        final mid = rules.cols ~/ 2;
-        final sorted = [...legal]
-          ..sort((a, b) => (b - mid).abs().compareTo((a - mid).abs()));
-        return sorted.first;
-      };
+    case 'chaotic':
+      strategy = FallbackStrategy.random;
+      break;
     case 'pile':
-      return (board) {
-        // Mirrors FallbackStrategy.pileFocus: highest pile wins, ties broken
-        // by closeness to the middle column.
-        final legal = rules.legalMoves(board);
-        final mid = rules.cols ~/ 2;
-        var bestMove = legal.first;
-        var bestCount = -1;
-        var bestDist = rules.cols;
-        for (final move in legal) {
-          var count = 0;
-          for (var r = 0; r < board.rows; r++) {
-            if (board.get(r, move) != 0) count++;
-          }
-          final dist = (move - mid).abs();
-          if (count > bestCount || (count == bestCount && dist < bestDist)) {
-            bestCount = count;
-            bestMove = move;
-            bestDist = dist;
-          }
-        }
-        return bestMove;
-      };
-    default:
-      throw ArgumentError(
-        'Unknown coach kind: $kind (try middle, random, edge, pile)',
-      );
+    case 'stacker':
+      strategy = FallbackStrategy.pileFocus;
+      break;
+    case 'builder':
+      strategy = FallbackStrategy.ownPileAdjacent;
+      break;
+    case 'connector':
+      strategy = FallbackStrategy.greedyConnect;
+      break;
+    case 'sentinel':
+      strategy = FallbackStrategy.greedyConnectDefense;
+      break;
   }
+  if (strategy == null) {
+    throw ArgumentError(
+      'Unknown coach kind: $kind '
+      '(try middle, chaotic/random, stacker/pile, builder, connector, sentinel)',
+    );
+  }
+  // Coaches play as side +1; the fallback strategies all assume own = +1, so
+  // selectMove can be called directly without flipping perspective.
+  final coachBrain = CloneBrain(
+    rules: rules,
+    log: GameLog(),
+    fallback: strategy,
+    random: random,
+  );
+  return (board) => coachBrain.selectMove(board, 1).move;
 }
 
 void _printWindowStats(List<int> outcomes, List<int> plies, int windowSize) {
