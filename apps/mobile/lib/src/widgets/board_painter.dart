@@ -4,10 +4,10 @@ import 'package:game_engine/game_engine.dart';
 import '../theme.dart';
 
 const _kBoardColor = PiYingTheme.surface;
-const _kBoardOutline = PiYingTheme.amber;
-const _kEmptyColor = Color(0xFF0A1432); // very dark, like an empty hole
+const _kBoardOutline = PiYingTheme.yellow;
+const _kEmptyColor = PiYingTheme.surfaceLow; // empty hole — deeper than panel
 const _kPlayerColor = PiYingTheme.red;
-const _kCloneColor = PiYingTheme.amberDeep;
+const _kCloneColor = PiYingTheme.yellow;
 
 /// Renders the Connect Four board: a chunky panel with circular holes, a
 /// chip in each occupied cell, and an optional winning-line highlight.
@@ -73,17 +73,25 @@ class BoardPainter extends CustomPainter {
       }
     }
 
-    // Winning-line highlight on top of everything.
+    // Winning-line highlight on top of everything. We draw a thick ring +
+    // a softer outer halo so the four cells clearly read as "the winner",
+    // not just decoration.
     final w = winningCells;
     if (w != null) {
-      final glowPaint = Paint()
-        ..color = PiYingTheme.cyan
+      final ringPaint = Paint()
+        ..color = PiYingTheme.blue
         ..style = PaintingStyle.stroke
         ..strokeWidth = 4;
+      final haloPaint = Paint()
+        ..color = PiYingTheme.blue.withValues(alpha: 0.4)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
       for (final cell in w) {
         final cx = cell.col * cellSize + cellSize / 2;
         final cy = cell.row * cellSize + cellSize / 2;
-        canvas.drawCircle(Offset(cx, cy), radius + 3, glowPaint);
+        canvas.drawCircle(Offset(cx, cy), radius + 3, haloPaint);
+        canvas.drawCircle(Offset(cx, cy), radius + 3, ringPaint);
       }
     }
   }
