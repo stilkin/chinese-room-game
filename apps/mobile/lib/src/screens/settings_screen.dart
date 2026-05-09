@@ -106,19 +106,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            Slider(
-              value: _position.toDouble(),
-              min: 0,
-              max: (_kSliderLevels.length - 1).toDouble(),
-              divisions: _kSliderLevels.length - 1,
-              label: level.name,
-              onChanged: (v) {
-                setState(() => _position = v.round());
-              },
-              onChangeEnd: (v) {
-                final idx = v.round();
-                notifier.setFallback(_kSliderLevels[idx].strategy);
-              },
+            SliderTheme(
+              data: SliderThemeData(
+                activeTrackColor: PiYingTheme.yellow,
+                inactiveTrackColor: PiYingTheme.outline,
+                thumbColor: PiYingTheme.yellow,
+                overlayColor: PiYingTheme.yellow.withValues(alpha: 0.18),
+                activeTickMarkColor: PiYingTheme.bg,
+                inactiveTickMarkColor: PiYingTheme.onSurfaceMuted,
+                trackHeight: 6,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 22),
+                valueIndicatorColor: PiYingTheme.yellow,
+                valueIndicatorTextStyle: theme.textTheme.labelSmall,
+                showValueIndicator: ShowValueIndicator.never,
+              ),
+              child: Slider(
+                value: _position.toDouble(),
+                min: 0,
+                max: (_kSliderLevels.length - 1).toDouble(),
+                divisions: _kSliderLevels.length - 1,
+                label: level.name,
+                onChanged: (v) {
+                  setState(() => _position = v.round());
+                },
+                onChangeEnd: (v) {
+                  final idx = v.round();
+                  notifier.setFallback(_kSliderLevels[idx].strategy);
+                },
+              ),
             ),
             const Divider(height: 48),
             FilledButton.tonal(
