@@ -226,19 +226,19 @@ class CloneBrain {
   }
 
   String _buildNarration(List<WeightedCandidate> weighted) {
-    if (weighted.length > 1) {
+    if (weighted.isEmpty) return narrate(DecisionContext.allLosing);
+    // Count distinct *games* the candidates came from, not stored state rows.
+    // A single 14-ply past game can contribute 10+ candidate states to the
+    // four queries, and saying "I've seen this 10 times" after one past game
+    // reads as a lie. Distinct game IDs is the honest figure.
+    final games = <String>{for (final c in weighted) c.state.gameId};
+    if (games.length > 1) {
       return narrate(
         DecisionContext.multipleCandidates,
-        candidateCount: weighted.length,
+        candidateCount: games.length,
       );
     }
-    if (weighted.length == 1) {
-      return narrate(
-        DecisionContext.fuzzyMatch,
-        gameId: weighted.first.state.gameId,
-      );
-    }
-    return narrate(DecisionContext.allLosing);
+    return narrate(DecisionContext.fuzzyMatch);
   }
 
   MoveDecision _fallbackDecision(List<int> legalMoves, Board board) {

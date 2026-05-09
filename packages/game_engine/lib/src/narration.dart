@@ -2,19 +2,19 @@ enum DecisionContext { fuzzyMatch, multipleCandidates, fallbackUsed, allLosing }
 
 String narrate(
   DecisionContext context, {
-  String? gameId,
-  int? movesToEnd,
   int? candidateCount,
   String? fallbackName,
 }) {
   switch (context) {
     case DecisionContext.fuzzyMatch:
-      return 'This looks like game $gameId — going with what worked';
+      return 'this looks like a past game of yours — going with what worked';
     case DecisionContext.multipleCandidates:
-      return "I've seen this $candidateCount times — going with the best outcome";
+      final n = candidateCount ?? 0;
+      final games = n == 1 ? 'game' : 'games';
+      return "i've seen positions like this in $n past $games — going with the best outcome";
     case DecisionContext.fallbackUsed:
-      return "I've never seen anything like this — going with $fallbackName";
+      return "i've never seen anything like this — going with $fallbackName";
     case DecisionContext.allLosing:
-      return 'Everything I know about this position is bad — trying something different';
+      return 'everything i know about this position is bad — trying something different';
   }
 }
