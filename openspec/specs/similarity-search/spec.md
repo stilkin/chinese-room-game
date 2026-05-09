@@ -1,38 +1,51 @@
-## ADDED Requirements
+## Purpose
+Defines how the clone retrieves past states similar to the current position via L1 distance over diffused images.
+## Requirements
+### Requirement: Per-game candidate pre-filter
+The system SHALL pre-filter candidate states using a game-specific `CandidateFilter` returned by `GameRules.prefilter(query)`. The filter exposes two methods: `bool matches(GameState candidate)` decides whether a candidate passes; `CandidateFilter widened()` returns a strictly more permissive filter for adaptive widening.
 
-### Requirement: Two-scalar pre-filter
-The system SHALL pre-filter candidate states using two values computed from the board: `total_material` (sum of absolute piece values) and `material_balance` (sum of signed piece values). Only states within the current filter window on both axes SHALL be considered.
+#### Scenario: Connect Four uses ply-window filter
+- **WHEN** the active game is Connect Four and the prefilter is requested with a query at ply 8
+- **THEN** the returned filter SHALL accept candidates with ply in `[6, 10]` (window of `±2` by default) and reject the rest
 
-#### Scenario: Filter excludes distant game phases
-- **WHEN** the current board has total_material=10 and the filter window is ±2
-- **THEN** stored states with total_material < 8 or > 12 SHALL be excluded
+#### Scenario: Filter widens monotonically
+- **WHEN** `widened()` is called on a filter
+- **THEN** the returned filter SHALL accept every candidate the previous filter accepted, plus at least some candidates the previous filter rejected (when such candidates exist in the data)
 
-#### Scenario: Filter on both axes
-- **WHEN** the current board has total_material=10 and material_balance=0
-- **THEN** only states within ±window on BOTH total_material AND material_balance SHALL pass
+#### Scenario: Adaptive widening loop
+- **WHEN** `searchSimilar` is invoked and the initial filter passes fewer than `minCandidates` candidates
+- **THEN** the search SHALL replace the filter with `filter.widened()` and re-filter
+- **AND** the search SHALL repeat until at least `minCandidates` candidates pass or `maxWidens` rounds have elapsed
+- **AND** if `maxWidens` rounds pass without enough candidates, the search SHALL fall through and use the entire candidate pool
 
-### Requirement: Adaptive widening
-The system SHALL start with a filter window of ±2 on each axis. If fewer than 5 candidates pass, the window SHALL double iteratively until at least 5 candidates are found or the entire database has been searched.
+### Requirement: L1 distance over quantized diffused images
+The system SHALL rank candidates by L1 distance between their stored `diffusedImage` (Int8List) and the query's diffused image. L1 distance is `sum_i |a[i] - b[i]|` over all `i` in `[0, length)`. Lower distance means higher similarity.
 
-#### Scenario: Enough candidates at initial window
-- **WHEN** 8 stored states fall within ±2 on both axes
-- **THEN** the system SHALL use those 8 candidates without widening
+#### Scenario: Identical images have zero distance
+- **WHEN** the query and candidate have byte-equal `diffusedImage` values
+- **THEN** the L1 distance SHALL be `0`
 
-#### Scenario: Widening on insufficient candidates
-- **WHEN** only 2 stored states fall within ±2
-- **THEN** the system SHALL widen to ±4 and re-filter
+#### Scenario: Single-cell magnitude difference
+- **WHEN** the query and candidate differ in exactly one cell, by magnitude `k` (e.g. query has `5` and candidate has `-3` → magnitude `8`)
+- **THEN** the L1 distance SHALL be `k`
 
-#### Scenario: Full database fallback
-- **WHEN** widening still yields fewer than 5 candidates after reaching the maximum possible window
-- **THEN** the system SHALL search the entire database
+#### Scenario: Rank lower distances first
+- **WHEN** candidate A has L1 distance 12 and candidate B has L1 distance 30
+- **THEN** the search SHALL return A before B
 
-### Requirement: Ranking by Hamming distance
-The system SHALL rank candidates by Hamming distance between their diffused bit hash and the query board's diffused bit hash. Lower distance means higher similarity. There is no exact-match tier — matching is purely perceptual.
+### Requirement: Quantized diffused image is the stored fingerprint
+The system SHALL produce each row's matching fingerprint by diffusing the row's board (via the game's `DiffusionKernel`), then quantizing the resulting real-valued influence map to `Int8List` via `quantizeInfluenceMap`. Quantization rounds each cell to the nearest integer and clamps to `[-128, 127]`.
 
-#### Scenario: Closer hash ranked higher
-- **WHEN** candidate A has Hamming distance 3 and candidate B has Hamming distance 7
-- **THEN** candidate A SHALL be ranked above candidate B
+#### Scenario: Fingerprint length matches board cell count
+- **WHEN** a board with `r × c` cells is diffused and quantized
+- **THEN** the resulting `Int8List` SHALL have length `r × c`
 
-#### Scenario: Identical bit hash ranks first
-- **WHEN** a candidate's diffused bit hash equals the query's diffused bit hash
-- **THEN** it SHALL be ranked above any candidate with non-zero Hamming distance
+#### Scenario: Empty board has zero fingerprint
+- **WHEN** the input board is all zeros
+- **THEN** the resulting fingerprint SHALL be all zeros (length `r × c`)
+
+#### Scenario: Quantization clamps out-of-range values
+- **WHEN** an influence cell has value `200.0`
+- **THEN** the quantized value SHALL be `127` (Int8 max)
+- **AND** when an influence cell has value `-150.0`, the quantized value SHALL be `-128` (Int8 min)
+

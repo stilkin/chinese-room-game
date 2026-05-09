@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+Defines the game lifecycle (start, play, end, reset).
+
+## Requirements
 
 ### Requirement: Human always plays first
 The player SHALL always be player 1 (positive piece values) and take the first turn in every game.

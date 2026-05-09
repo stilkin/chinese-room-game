@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+Defines the in-game UI (board, narration, controls).
+
+## Requirements
 
 ### Requirement: Board rendered with CustomPainter
 The game screen SHALL render the Connect Four board (7 columns × 6 rows) using a CustomPainter. Empty cells, player pieces, and clone pieces SHALL be visually distinct.

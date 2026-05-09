@@ -61,8 +61,4 @@ The strategy `edgeFocus` is removed.
 - **AND** no column allows the opponent to create a length-4 run on their next move
 - **THEN** the bot SHALL behave identically to `greedyConnect`
 
-## REMOVED Requirements
-
-### Requirement: Edge-focus fallback
-**Reason**: Edge-focus is a known weak strategy for Connect Four (corners are weak), has no narrative purpose, and was not used by the benchmark. It is removed entirely from the engine.
-**Migration**: any persisted value not in the user-facing set (including legacy `edgeFocus` and benchmark-only `middleFocus`) SHALL be silently mapped to `pileFocus` at the persistence layer.
+_(Note: the `edgeFocus` scenario from the prior `Cold-start fallback personalities` requirement is implicitly removed by the modified content above. Migration: any persisted value not in the user-facing set (including legacy `edgeFocus` and benchmark-only `middleFocus`) SHALL be silently mapped to `pileFocus` at the persistence layer.)_

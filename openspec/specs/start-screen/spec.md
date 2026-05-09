@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+Defines the start screen UI (resume, new game, settings entry).
+
+## Requirements
 
 ### Requirement: Start screen displays games played count
 The start screen SHALL display the total number of completed games.

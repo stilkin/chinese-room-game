@@ -61,13 +61,11 @@ Negative values represent the opponent's pieces. The high king value ensures kin
 
 ## Similarity Search: Board States as Images
 
-Board states are treated as tiny grayscale images. Similarity search uses a combination of exact hashing and fuzzy matching via "diffused" board representations.
+Board states are treated as tiny grayscale images. Each piece's value is **diffused** — spread across the board according to the game's movement rules — and the resulting influence map is quantized to one signed byte per cell (Int8). Matching is L1 distance over those quantized images, with a per-game candidate prefilter (e.g. ply window for Connect Four) to trim the search space before distance compute.
 
-### Layer 1: Zobrist Hashing (Exact Match)
+A separate exact-hash layer was considered (Zobrist) and rejected: at our scale, single-pass L1 over Int8 vectors is microseconds and the prefilter already does the broad cut. Two representations per row was more storage and code for no measurable benefit.
 
-Precompute a table of random 64-bit integers for each `(piece_type, square)` combination. The hash of a board state is the XOR of all entries for pieces on the board. This gives O(1) exact-match lookup and can be incrementally updated per move.
-
-### Layer 2: Diffused Similarity (Fuzzy Match)
+### Diffused Similarity
 
 Before computing similarity, board states are **diffused** — each piece's value is spread across the board according to the game's movement rules. The diffusion kernel **is the game definition**.
 
@@ -84,22 +82,24 @@ Before computing similarity, board states are **diffused** — each piece's valu
 
 #### Result
 
-The diffused board is a kind of **influence map**. Two boards with similar strategic character produce similar influence maps even if exact piece positions differ slightly. This is then used for perceptual-style hashing and Hamming distance comparison.
+The diffused board is a kind of **influence map**. Two boards with similar strategic character produce similar influence maps even if exact piece positions differ slightly. We quantize each cell's float influence to a signed Int8 and match by L1 distance over those byte vectors.
 
 ### Symmetry Canonicalization
 
-Handle symmetry at **write time**, not query time:
+The storage convention is **per-game winner-POV** at write time:
 
-- **Left/right mirror:** If the board's left half has a higher hash than the right half, mirror it before storing.
-- **Color symmetry:** Always store from the perspective of the side to move.
-- **Inversion:** A lost game is stored as a *won* game from the opponent's perspective (board flipped, colors swapped). This doubles useful training data per game.
+- **Color symmetry:** A bot-won game is replaced row-by-row at backfill time by `invertState(...)` so the winner's pieces are `+1` everywhere. Player-won games and draws stay as-is. The DB invariant after backfill is "winner is `+1`."
+- **Left/right symmetry:** Handled at **read time**, not write time. The brain runs four queries — `current`, `flipPerspective(current)`, and a left/right mirror of each — and combines the results. Write-time mirror normalization was tried and removed (subtle bugs, no measurable benefit over query-time mirror).
 
 ### Search Strategy
 
-1. Filter by ply count / piece count (narrow to ±2 of current state).
-2. Check Zobrist hash for exact matches.
-3. Compare diffused hashes via Hamming distance for fuzzy matches.
-4. Rank top candidates by outcome weighting.
+At every move decision, the brain:
+
+1. Runs **four queries** (perspective × mirror) against the stored rows. Per-game `CandidateFilter` trims candidates by, e.g., ply window for Connect Four, widening adaptively if too few survive.
+2. Ranks survivors by L1 distance over the quantized diffused images; caps at top-K per query (K=20). Candidates beyond a per-game L1 ceiling are dropped.
+3. Outcome filter: keeps `outcome=+1` rows from the perspective-flipped queries (own past wins) and `outcome=-1` rows from the unflipped queries (own past losses); discards cross-side rows.
+4. Accumulates `weight × candidate.diffusedImage` (mirrored if from a mirror query) into a single signed heatmap, with `weight = 1/(1 + movesToEnd) × 1/(1 + l1Distance)`. Weights are always positive — the candidate image's natural sign carries the win/loss lesson.
+5. Scores each legal move via the per-game `MoveScorer`; picks the highest. If the chosen move's heatmap score is `≤ 0`, falls back to the configured personality strategy.
 
 ### Performance
 
@@ -119,14 +119,17 @@ These are acceptable for all games. The ply-count filter typically reduces the s
 
 ### Cold Start (No Data)
 
-The player selects a **fallback personality** for their clone at creation. For Connect Four:
+The player picks a **fallback personality** for their clone via a 5-step slider. For Connect Four, ordered by observed strength in head-to-head play:
 
-- **True Random** — uniform random legal move.
-- **Middle Focus** — prefer center columns (objectively stronger in Connect Four).
-- **Edge Focus** — prefer edge columns (produces unusual games).
-- **Pile Focus** — play near where most stones already are (clustering heuristic).
+- **Chaotic** (`random`) — uniform random legal column.
+- **Builder** (`ownPileAdjacent`) — drops next to the tallest stack of own pieces.
+- **Stacker** (`pileFocus`) — plays the column with the highest pile of pieces, any colour. **Default for new installs.**
+- **Connector** (`greedyConnect`) — extends own longest chain (length-4 wins fall out for free).
+- **Sentinel** (`greedyConnectDefense`) — Connector plus a one-step defensive block on opponent length-4 threats.
 
-The fallback is framed as the clone's "personality when it doesn't know what to do." As game data accumulates, the fallback fires less and less.
+`middleFocus` (closest-to-centre) survives in the engine for benchmark use only — never surfaced via UI. `edgeFocus` was removed entirely as a known weak strategy with no narrative purpose.
+
+The fallback fires when the clone has no relevant data, when retrieval returns nothing past the L1 ceiling, or when the all-losing guard rejects the chosen move. As game data accumulates, the fallback fires less and less.
 
 ### Only Losing Data Available
 
@@ -147,7 +150,7 @@ The clone always displays a one-liner explaining its reasoning. This is essentia
 - "Playing a move from game #5 (won in 3 moves)"
 - "I've seen this 4 times before — going with what worked best"
 - "Playing a move that beat you in game #12"
-- "I've never seen anything like this — going with middle focus"
+- "I've never seen anything like this — going with stacker"
 - "Everything I know about this position is bad — trying something different"
 
 ---
@@ -184,11 +187,12 @@ One language across the entire stack. The game engine is written once as a share
 A pure Dart library containing:
 
 - Board representation and rules per game.
-- Canonicalization (symmetry normalization, perspective flipping).
-- Zobrist hash computation.
-- Diffusion kernel per game type.
-- Similarity/distance functions.
-- Move weighting and selection logic.
+- Perspective and mirror transforms (`flipPerspective`, `mirrorBoard`, `invertState`).
+- Diffusion kernel per game type, with quantization to Int8.
+- L1 similarity matching with adaptive-widening per-game `CandidateFilter`.
+- Heatmap-based `MoveSelectionStrategy` and per-game `MoveScorer`.
+- `CloneBrain` orchestrating four-query retrieval + heatmap + all-losing fallback.
+- Fallback personality strategies (cold-start "personalities").
 - Clone narration text generation.
 
 This package has no Flutter dependency — it's pure Dart, testable with `dart test`.
@@ -204,17 +208,17 @@ clone_wars/
 │       ├── lib/
 │       │   ├── src/
 │       │   │   ├── board.dart              # Board representation (2D Int8 array)
-│       │   │   ├── canonicalize.dart       # Symmetry normalization
-│       │   │   ├── zobrist.dart            # Zobrist hashing
-│       │   │   ├── diffusion.dart          # Diffusion kernel interface
-│       │   │   ├── similarity.dart         # Distance/comparison functions
-│       │   │   ├── clone_brain.dart        # Move selection + weighting
+│       │   │   ├── canonicalize.dart       # flipPerspective, mirrorBoard, invertState
+│       │   │   ├── diffusion.dart          # DiffusionKernel + quantizeInfluenceMap
+│       │   │   ├── similarity.dart         # L1 distance + searchSimilar + CandidateFilter
+│       │   │   ├── game_state.dart         # GameState + GameLog
+│       │   │   ├── game_rules.dart         # GameRules abstract base
+│       │   │   ├── move_selection.dart     # InfluenceOverlayStrategy + MoveScorer
+│       │   │   ├── clone_brain.dart        # Four-query brain + fallback personalities
 │       │   │   ├── narration.dart          # Clone narration text
 │       │   │   └── games/
-│       │   │       ├── connect_four.dart   # Rules + diffusion kernel
-│       │   │       ├── othello.dart
-│       │   │       ├── chess.dart
-│       │   │       └── go.dart
+│       │   │       └── connect_four.dart   # Rules, diffusion kernel, filter, scorer
+│       │   │       # othello / chess / go land here when phase 4 starts
 │       │   └── game_engine.dart            # Public API barrel file
 │       ├── test/
 │       └── pubspec.yaml
@@ -254,17 +258,16 @@ clone_wars/
 
 ```dart
 class GameState {
-  final int id;
-  final int gameId;
-  final int ply;                    // Move number
-  final List<List<int>> board;      // Raw 2D board state (canonical)
-  final int zobristHash;            // Precomputed Zobrist hash
-  final List<int> diffusedHash;     // Precomputed diffused influence map
+  final Board board;                // 2D Int8 array, winner-POV after backfill
+  final Int8List diffusedImage;     // Quantized diffused influence map (one byte per cell)
   final int movePlayed;             // Column (Connect Four) or square index
-  final int side;                   // Which side played this move
+  final int ply;                    // Move number within the game
+  final String gameId;
+  final int totalMaterial;          // Used by per-game CandidateFilter
+  final int materialBalance;
   // Backfilled on game end:
-  final int? outcome;               // 1 = win, 0 = draw, -1 = loss (from side's perspective)
-  final int? movesToEnd;            // How many moves until the game ended
+  final int? outcome;               // +1 = mover-of-this-row won, -1 = lost, 0 = draw
+  final int? movesToEnd;            // Plies remaining from this row to game end
 }
 ```
 
@@ -284,10 +287,18 @@ class Game {
 ### CloneConfig
 
 ```dart
-class CloneConfig {
-  final String gameType;
-  final String fallbackStrategy;    // "random", "middle", "edge", "pile"
-  final double confidenceThreshold; // Below this, use fallback
+// Persisted as a single key/value row in the clone_config table.
+// Slider-selectable values: "random", "ownPileAdjacent", "pileFocus" (default),
+// "greedyConnect", "greedyConnectDefense". "middleFocus" survives in the
+// engine for benchmark use only and is silently coerced to "pileFocus" if
+// found in storage. Legacy "edgeFocus" is also coerced to "pileFocus".
+enum FallbackStrategy {
+  random,
+  middleFocus,
+  pileFocus,
+  ownPileAdjacent,
+  greedyConnect,
+  greedyConnectDefense,
 }
 ```
 
@@ -295,17 +306,17 @@ class CloneConfig {
 
 ## Build Order
 
-### Phase 1: Core Engine + Mobile Game (MVP)
+### Phase 1: Core Engine + Mobile Game (MVP) — **shipped**
 
-1. **Shared game engine package** — Connect Four rules, board representation, canonicalization, Zobrist hashing, basic brute-force similarity (no diffusion yet, just exact match + raw Hamming distance).
-2. **Flutter mobile app** — Play Connect Four against the clone. SQLite storage. Clone narration. Fallback personality selector.
+1. **Shared game engine package** — Connect Four rules, board representation, perspective/mirror transforms, diffusion kernel + quantized Int8 image matching, four-query retrieval, heatmap-based move selection.
+2. **Flutter mobile app** — Play Connect Four against the clone. SQLite storage (schema v3). Clone narration. Fallback personality slider.
 3. **Validate the core loop** — Is it fun? Does the clone feel like it's learning? Is the narration engaging?
 
-### Phase 2: Diffusion + Polish
+### Phase 2: Diffusion + Polish — **mostly shipped**
 
-4. **Add diffusion kernels** — Implement the Connect Four diffusion kernel. Precompute diffused hashes at write time. Compare: does diffused similarity find better matches than raw Hamming?
-5. **Add inversion** — Use opponent data from losses. Observe effect on clone quality.
-6. **Polish UX** — Animations, game history browser, game replay viewer, clone stats ("your clone has played 47 games, win rate 38%").
+4. **Diffusion kernels and per-game L1 matching** — done; benchmark validated against the bit-hash baseline before merging.
+5. **Inversion** — done; bot-won games are written back as winner-POV at backfill (`invertState`).
+6. **Polish UX** — animations and core polish are in. A game history browser / replay viewer is still on the table.
 
 ### Phase 3: Online
 

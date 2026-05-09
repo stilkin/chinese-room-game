@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+Defines Connect Four-specific rules, win detection, and per-game retrieval and scoring helpers.
+
+## Requirements
 
 ### Requirement: Legal move generation
 The system SHALL return a list of columns (0-6) that are not full as legal moves for the current position.

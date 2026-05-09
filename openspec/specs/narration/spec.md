@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+Defines the clone's verbal explanation of its decisions.
+
+## Requirements
 
 ### Requirement: Narration from decision context
 The system SHALL generate a one-line narration string for each clone move based on the decision context: how the move was found, from which game, and with what outcome.
