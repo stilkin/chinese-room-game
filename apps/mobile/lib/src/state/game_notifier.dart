@@ -248,6 +248,17 @@ class GameNotifier extends ChangeNotifier {
   Future<void> deleteAllData() async {
     await db.deleteAllData();
     log.states.clear();
+    // Reset the live game too — otherwise the next playerMove would persist
+    // into a wiped gameId with no `games` row backing it.
+    _displayBoard = Board(rules.rows, rules.cols);
+    _currentSide = 1;
+    _outcome = null;
+    _narration = '';
+    _ply = 0;
+    _isCloneThinking = false;
+    _lastMoveRow = -1;
+    _lastMoveCol = -1;
+    _lastMoveSide = 0;
     _gamesPlayed = 0;
     _playerWins = 0;
     _cloneWins = 0;

@@ -21,6 +21,7 @@ class _GameScreenState extends State<GameScreen>
   late final AnimationController _dropController;
   int _animatedMoveCounter = 0; // last move counter the animation ran for
   bool _isDropAnimating = false;
+  bool _postGameNavScheduled = false;
 
   void _onChange() {
     if (!mounted) return;
@@ -35,7 +36,10 @@ class _GameScreenState extends State<GameScreen>
         setState(() => _isDropAnimating = false);
       });
     }
-    if (n.outcome != null) {
+    // Latch so subsequent notifyListeners() calls (narration update,
+    // isCloneThinking flips, etc.) don't enqueue a second navigation.
+    if (n.outcome != null && !_postGameNavScheduled) {
+      _postGameNavScheduled = true;
       // Brief pause on the game screen so the player sees the winning chip
       // and the highlight before navigating to post-game.
       Future.delayed(const Duration(milliseconds: 1200), () {

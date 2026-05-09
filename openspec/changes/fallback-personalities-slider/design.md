@@ -12,7 +12,7 @@ Pick a uniformly random legal column. Unchanged from today.
 
 For each legal column, count non-empty cells (any colour). Pick the column with the highest count. Tie-break: closest to `mid`. Unchanged from today; only the user-facing label changes.
 
-#### 3. Builder — `FallbackStrategy.ownPileAdjacent` (NEW, default)
+#### 3. Builder — `FallbackStrategy.ownPileAdjacent` (NEW)
 
 Goal: build *your own* structure rather than just stacking.
 
@@ -57,27 +57,29 @@ enum FallbackStrategy {
 }
 ```
 
-The `edgeFocus` value is **removed** — not deprecated. Removing it forces every call site (including the benchmark CLI) to update; any legacy persisted `edgeFocus` string is handled at the `loadFallback` layer (mapped to `ownPileAdjacent`).
+The `edgeFocus` value is **removed** — not deprecated. Removing it forces every call site (including the benchmark CLI) to update; any legacy persisted `edgeFocus` string is handled at the `loadFallback` layer (mapped to `pileFocus`, the same default new installs get).
 
 ### UI: discrete slider
 
 Flutter `Slider` with `divisions: 4`, value range 0–4. The slider value indexes into a fixed list of `(strategy, name, blurb)` tuples, in the canonical order:
 
-```
+```text
 0 — Chaotic   — "plays anywhere. no plan."
-1 — Stacker   — "stacks the tallest pile."
-2 — Builder   — "builds next to its own pieces."   ← default
+1 — Builder   — "builds next to its own pieces."
+2 — Stacker   — "stacks the tallest pile."        ← default
 3 — Connector — "plays for longer chains."
 4 — Sentinel  — "plays for chains. blocks losses."
 ```
+
+The original ordering put Builder at position 2 as the default, but the head-to-head round-robin gate (see "Benchmark validation gate" below) showed Stacker beating Builder on Connect Four — Stacker tracks the centre column (canonical-best opening) while Builder deliberately moves *away* from centre. Slider positions 2 and 3 were swapped to match observed strength, and the default moved to Stacker so the cold-start clone is at least mid-strength.
 
 Big name above the slider in display font (Press Start 2P), the one-line blurb below in body font (VT323). Live update as the user drags. Persists on slider release (no separate Save button — same pattern as the current radio).
 
 ### Default flow
 
-- New install: `loadFallback` returns `ownPileAdjacent` (no row in `clone_config`).
+- New install: `loadFallback` returns `pileFocus` (Stacker — no row in `clone_config`).
 - Existing install with stored `random`/`pileFocus`/`ownPileAdjacent`/`greedyConnect`/`greedyConnectDefense`: that exact value is honoured.
-- Existing install with stored `edgeFocus` or `middleFocus`: silently mapped to `ownPileAdjacent`. No upgrade UI; user discovers the new slider on next visit to settings.
+- Existing install with stored `edgeFocus` or `middleFocus` (or any other non-user-facing value): silently mapped to `pileFocus`. No upgrade UI; user discovers the new slider on next visit to settings.
 
 ### Benchmark validation gate (before ship)
 
@@ -100,7 +102,7 @@ Then a head-to-head round-robin of the four user-facing personalities (no learni
 ### Risks & decision points
 
 1. **Builder degeneracy.** With no own pieces (true at the very first move of the very first game ever), Builder must default somewhere. Centre column is the canonical choice. *Decision*: hard-code `mid` as the empty-board choice; documented behaviour, single line of code.
-2. **Sentinel giving the game away early.** A "blocks all 4-in-a-rows" personality played as the cold-start fallback for the first ~10 games risks the player feeling like they're playing a normal bot, not their nascent clone. The whole product gimmick relies on the clone *learning from you*. *Decision*: ship it, but the slider default is **Builder** (level 2/4), not Sentinel — the player has to opt into the strongest personality. Prevents accidental over-strong cold-start.
+2. **Sentinel giving the game away early.** A "blocks all 4-in-a-rows" personality played as the cold-start fallback for the first ~10 games risks the player feeling like they're playing a normal bot, not their nascent clone. The whole product gimmick relies on the clone *learning from you*. *Decision*: ship it, but the slider default is **Stacker** (level 2/4 after the round-robin reorder), not Sentinel — the player has to opt into the strongest personality. Prevents accidental over-strong cold-start.
 3. **Slider ordering wrong.** If Connector loses to Stacker in head-to-head, the slider's "complexity" axis lies. *Decision*: benchmark gate before ship (above). If a bot doesn't earn its slider position, fix or reorder.
 4. **No abstraction for "personality" yet.** Three new private methods on `CloneBrain` is a slight smell, but extracting a `Personality` interface now would be premature given Connect Four is the only game. *Decision*: defer extraction until game #2 forces it. (See Build Phases section of CLAUDE.md.)
 

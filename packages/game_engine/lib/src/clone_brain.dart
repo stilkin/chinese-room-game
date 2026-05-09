@@ -313,7 +313,8 @@ class CloneBrain {
     final mid = rules.cols ~/ 2;
 
     // Find the column with the most own (+1) pieces; ties broken by closeness
-    // to mid, then by lower index for determinism.
+    // to mid. Iteration is ascending and we only update on a strict
+    // improvement, so first-match-wins handles the lower-index tie-break.
     var cStar = -1;
     var bestCount = 0;
     var bestDist = rules.cols;
@@ -324,9 +325,7 @@ class CloneBrain {
       }
       if (count == 0) continue;
       final dist = (c - mid).abs();
-      if (count > bestCount ||
-          (count == bestCount && dist < bestDist) ||
-          (count == bestCount && dist == bestDist && c < cStar)) {
+      if (count > bestCount || (count == bestCount && dist < bestDist)) {
         bestCount = count;
         bestDist = dist;
         cStar = c;

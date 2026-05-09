@@ -50,11 +50,15 @@ class BoardPainter extends CustomPainter {
 
     final radius = cellSize * 0.4;
 
-    // Empty holes first (so chips render on top with shadow).
+    // Empty holes first (so chips render on top with shadow). The excluded
+    // slot is also drawn as an empty hole — it points at the cell the falling
+    // chip is about to land in, so visually it should read as "still empty"
+    // until the drop animation finishes.
     final holePaint = Paint()..color = _kEmptyColor;
     for (var r = 0; r < board.rows; r++) {
       for (var c = 0; c < board.cols; c++) {
-        if (board.get(r, c) != 0) continue;
+        final isExcluded = excludeRow == r && excludeCol == c;
+        if (board.get(r, c) != 0 && !isExcluded) continue;
         final cx = c * cellSize + cellSize / 2;
         final cy = r * cellSize + cellSize / 2;
         canvas.drawCircle(Offset(cx, cy), radius, holePaint);

@@ -42,7 +42,7 @@ Cross-side rows (Q_A's `outcome=-1`, Q_B's `outcome=+1`, etc.) SHALL be ignored 
 
 ### Requirement: Distance-weighted heatmap accumulation (replaces Hamming-distance vote)
 Each candidate's weight SHALL be computed as:
-```
+```text
 weight = (1 / (1 + movesToEnd)) × (1 / (1 + l1Distance))
 ```
 Weights SHALL be always positive, regardless of the originating query. `l1Distance` is the matcher's L1 distance over Int8 diffused images.

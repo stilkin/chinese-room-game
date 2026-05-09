@@ -38,39 +38,9 @@ class ConnectFourRules extends GameRules {
 
   @override
   int? checkWinner(Board board) {
-    for (var r = 0; r < rows; r++) {
-      for (var c = 0; c < cols; c++) {
-        final v = board.get(r, c);
-        if (v == 0) continue;
-        if (c + 3 < cols &&
-            v == board.get(r, c + 1) &&
-            v == board.get(r, c + 2) &&
-            v == board.get(r, c + 3)) {
-          return v;
-        }
-        if (r + 3 < rows &&
-            v == board.get(r + 1, c) &&
-            v == board.get(r + 2, c) &&
-            v == board.get(r + 3, c)) {
-          return v;
-        }
-        if (r + 3 < rows &&
-            c + 3 < cols &&
-            v == board.get(r + 1, c + 1) &&
-            v == board.get(r + 2, c + 2) &&
-            v == board.get(r + 3, c + 3)) {
-          return v;
-        }
-        if (r + 3 < rows &&
-            c - 3 >= 0 &&
-            v == board.get(r + 1, c - 1) &&
-            v == board.get(r + 2, c - 2) &&
-            v == board.get(r + 3, c - 3)) {
-          return v;
-        }
-      }
-    }
-    // Check draw: no empty cells
+    final cells = findWinningCells(board);
+    if (cells != null) return board.get(cells.first.row, cells.first.col);
+    // No winner — draw if every cell is filled, otherwise still ongoing.
     for (var r = 0; r < rows; r++) {
       for (var c = 0; c < cols; c++) {
         if (board.get(r, c) == 0) return null;
@@ -81,57 +51,34 @@ class ConnectFourRules extends GameRules {
 
   /// If the board contains a four-in-a-row, returns the list of four
   /// `(row, col)` cells forming it. Returns null when there's no winner.
-  /// Useful for UI that wants to highlight the winning line.
+  /// Single source of truth for win detection; `checkWinner` calls into this.
   List<({int row, int col})>? findWinningCells(Board board) {
+    const directions = [
+      [0, 1], // horizontal
+      [1, 0], // vertical
+      [1, 1], // diagonal down-right
+      [1, -1], // diagonal down-left
+    ];
     for (var r = 0; r < rows; r++) {
       for (var c = 0; c < cols; c++) {
         final v = board.get(r, c);
         if (v == 0) continue;
-        if (c + 3 < cols &&
-            v == board.get(r, c + 1) &&
-            v == board.get(r, c + 2) &&
-            v == board.get(r, c + 3)) {
-          return [
-            (row: r, col: c),
-            (row: r, col: c + 1),
-            (row: r, col: c + 2),
-            (row: r, col: c + 3),
-          ];
-        }
-        if (r + 3 < rows &&
-            v == board.get(r + 1, c) &&
-            v == board.get(r + 2, c) &&
-            v == board.get(r + 3, c)) {
-          return [
-            (row: r, col: c),
-            (row: r + 1, col: c),
-            (row: r + 2, col: c),
-            (row: r + 3, col: c),
-          ];
-        }
-        if (r + 3 < rows &&
-            c + 3 < cols &&
-            v == board.get(r + 1, c + 1) &&
-            v == board.get(r + 2, c + 2) &&
-            v == board.get(r + 3, c + 3)) {
-          return [
-            (row: r, col: c),
-            (row: r + 1, col: c + 1),
-            (row: r + 2, col: c + 2),
-            (row: r + 3, col: c + 3),
-          ];
-        }
-        if (r + 3 < rows &&
-            c - 3 >= 0 &&
-            v == board.get(r + 1, c - 1) &&
-            v == board.get(r + 2, c - 2) &&
-            v == board.get(r + 3, c - 3)) {
-          return [
-            (row: r, col: c),
-            (row: r + 1, col: c - 1),
-            (row: r + 2, col: c - 2),
-            (row: r + 3, col: c - 3),
-          ];
+        for (final d in directions) {
+          final dr = d[0];
+          final dc = d[1];
+          final r3 = r + 3 * dr;
+          final c3 = c + 3 * dc;
+          if (r3 < 0 || r3 >= rows || c3 < 0 || c3 >= cols) continue;
+          if (v == board.get(r + dr, c + dc) &&
+              v == board.get(r + 2 * dr, c + 2 * dc) &&
+              v == board.get(r3, c3)) {
+            return [
+              (row: r, col: c),
+              (row: r + dr, col: c + dc),
+              (row: r + 2 * dr, col: c + 2 * dc),
+              (row: r3, col: c3),
+            ];
+          }
         }
       }
     }

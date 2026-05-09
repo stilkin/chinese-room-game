@@ -41,11 +41,12 @@ The bit-hash already discarded *far* more precision than Int8 quantization does 
 
 The current pre-filter uses `totalMaterial ±2` and `materialBalance ±2`. For Connect Four this is the same as `ply ±2` (each move adds one piece, no captures). For chess this is a meaningful filter (captures change material; balance changes with trade quality). For Go it'd be a fairly weak filter (stones change slowly).
 
-Rather than overload one filter to fit all games, we expose `CandidateFilter` as a `GameRules` member:
+Rather than overload one filter to fit all games, we expose `CandidateFilter` as a `GameRules` member. The query is captured by `prefilter(...)` at construction time, so the filter only needs to know about each candidate it inspects:
 
 ```dart
 abstract class CandidateFilter {
-  bool matches(GameState query, GameState candidate);
+  bool matches(GameState candidate);
+  CandidateFilter widened(); // a more permissive filter for the next iteration
 }
 
 abstract class GameRules {
@@ -54,16 +55,7 @@ abstract class GameRules {
 }
 ```
 
-Connect Four returns a filter on `ply ±2`. Adaptive widening (the "double the window until ≥5 candidates" loop) stays in `searchSimilar` as a generic loop — it asks the filter to produce a wider variant on each iteration.
-
-```dart
-abstract class CandidateFilter {
-  bool matches(GameState candidate);
-  CandidateFilter widened();  // returns a more permissive filter for the next iteration
-}
-```
-
-Connect Four's filter doubles its ply window each call to `widened()`. Other games can plug in their own widening strategy.
+Connect Four returns a filter on `ply ±2`. Adaptive widening (the "double the window until ≥5 candidates" loop) stays in `searchSimilar` as a generic loop — it asks the filter to produce a wider variant on each iteration. Connect Four's filter doubles its ply window each call to `widened()`; other games can plug in their own widening strategy.
 
 ### 5. Move scoring: per-game, not universal.
 
@@ -92,7 +84,7 @@ Today's two-query split (Q_A flipped, Q_B unchanged) handles the winner-POV stor
 
 Mirror at query time is much less invasive than mirror at write time:
 
-```
+```text
 Q_A         = flipPerspective(query)
 Q_A_mirror  = mirror(flipPerspective(query))
 Q_B         = query
@@ -102,8 +94,9 @@ Q_B_mirror  = mirror(query)
 Each query produces candidates, each candidate carries:
 - The candidate `GameState` (with its diffused image and `movePlayed`).
 - An L1 distance.
-- A **sign** (+1 for Q_A and Q_A_mirror, -1 for Q_B and Q_B_mirror).
 - A **move-untransform** function (identity for non-mirror queries, `c → cols-1-c` for mirror queries on Connect Four).
+
+The originating query is *not* tracked as a sign multiplier on the weight — see §7 for why.
 
 When a candidate feeds the heatmap, its diffused image is mirrored (if the query was a mirror query) before being added — so the territory aligns with the *query's* coordinate frame. Its `movePlayed` value is also untransformed via the per-query function for narration purposes (the heatmap doesn't directly need movePlayed, but narration does).
 
@@ -113,10 +106,12 @@ The cross-side rows policy from `winner-pov-foundation` carries forward: from Q_
 
 Single signed heatmap, board-shaped, accumulating contributions from all four query results:
 
-```
-weight = sign × (1 / (1 + movesToEnd)) × (1 / (1 + l1Distance))
+```text
+weight = (1 / (1 + movesToEnd)) × (1 / (1 + l1Distance))
 heatmap += weight * (mirroredIfNeeded(candidate.diffusedImage))
 ```
+
+Weights are always positive. The candidate image's *natural sign* carries the win/loss lesson: a winner-mover candidate has positive territory at its mover's cells (push the heatmap up there → "play here"); a loser-mover candidate has negative territory at its mover's cells (push it down there → "avoid here"). Multiplying the weight by an explicit sign would double-count and invert the loss signal.
 
 After all candidates are summed in, each legal move is scored via `rules.moveScorer.scoreMove(move, currentBoard, heatmap)`. Highest score wins.
 

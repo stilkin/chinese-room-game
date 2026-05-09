@@ -41,4 +41,4 @@ The post-game screen SHALL have a "Home" button that returns to the start screen
 
 #### Scenario: Tap home
 - **WHEN** the player taps "Home"
-- **THEN** the app SHALL navigate to the start screen
+- **THEN** the app SHALL navigate to the route `/` (the start screen)

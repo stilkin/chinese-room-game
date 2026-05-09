@@ -26,7 +26,7 @@
 - [x] 4.1–4.3 Wrote `bin/personality_round_robin.dart`. 50 games per direction, 1000 games total, seed 42.
 - [x] 4.4 **Gate result** (recorded for archive):
 
-  ```
+  ```text
   Aggregate wins (50 games per direction, alternated-first):
     sentinel   348
     connector  291

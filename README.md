@@ -6,13 +6,13 @@ The first game is **Connect Four**.
 
 ## How It Works
 
-The clone uses **case-based reasoning** over your game history — no neural networks, no minimax. Every move you and the clone make is recorded along with a perceptual fingerprint of the board (a diffused-influence bit hash). When it's the clone's turn, it doesn't simulate or look ahead; it asks "have I been somewhere like this before?" and acts on what it finds.
+The clone uses **case-based reasoning** over your game history — no neural networks, no minimax. Every move you and the clone make is recorded along with a perceptual fingerprint of the board (a quantized diffused-influence image — one signed byte per cell). When it's the clone's turn, it doesn't simulate or look ahead; it asks "have I been somewhere like this before?" and acts on what it finds.
 
 A few specifics:
 
 - **Per-game winner-POV storage.** Every game in the database is stored as if the winner was the side with the +1 pieces — player wins go in as-is, bot wins are flipped at game end. This keeps a single invariant ("winner is +1") across the whole DB and makes the data forward-compatible with averaging diffused images of winning trajectories.
-- **Two-query search at decision time.** The bot queries the database twice — once with its current board flipped to "as if I'm winning," once unchanged — and combines the results. Positive-weight candidates from the first query (bot's past winning moves) compete against negative-weight candidates from the second (bot's past losing moves) in a weighted vote.
-- **Distance-weighted, sign-aware vote.** Each candidate contributes `sign × 1/(1 + movesToEnd) × 1/(1 + hammingDistance)` to its move column's net score. Closer matches matter more, faster wins matter more, losses subtract.
+- **Four-query search at decision time.** The bot queries the database four times — perspective × mirror — to exploit both the winner-POV convention and the board's left/right symmetry. From the perspective-flipped queries we keep `outcome=+1` rows (own past wins); from the unflipped queries we keep `outcome=-1` rows (own past losses).
+- **L1-distance heatmap accumulation.** Each retrieved candidate contributes `weight × candidate.diffusedImage` (mirrored if it came from a mirror query) to a single signed heatmap, with `weight = 1/(1 + movesToEnd) × 1/(1 + l1Distance)` — closer matches matter more, faster wins matter more. Sign isn't a multiplier on the weight: the candidate image's *natural sign* carries the win/loss lesson (winner pieces are positive territory, loser pieces are negative). The legal move with the highest heatmap score wins; if every legal move scores ≤ 0, the bot falls back to a personality strategy.
 - **Resume.** Every move is persisted. Close the app mid-game, kill it, come back tomorrow — the start screen surfaces a Resume button and replays your moves to bring the game back exactly as you left it.
 - **Transparent narration.** The clone tells you why it made each move, drawing on the candidates it found.
 
