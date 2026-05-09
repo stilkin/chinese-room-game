@@ -8,6 +8,7 @@ import 'src/screens/post_game_screen.dart';
 import 'src/screens/settings_screen.dart';
 import 'src/screens/start_screen.dart';
 import 'src/state/game_notifier.dart';
+import 'src/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,10 +36,7 @@ class PiYingApp extends StatelessWidget {
       notifier: notifier,
       child: MaterialApp(
         title: 'Pi-Ying',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1F4FA8)),
-          useMaterial3: true,
-        ),
+        theme: PiYingTheme.build(),
         initialRoute: '/',
         routes: {
           '/': (_) => const StartScreen(),
