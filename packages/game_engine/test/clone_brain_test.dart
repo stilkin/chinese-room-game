@@ -35,17 +35,6 @@ void main() {
       expect(rules.legalMoves(board), contains(decision.move));
     });
 
-    test('edgeFocus prefers edge columns', () {
-      final brain = CloneBrain(
-        rules: rules,
-        log: GameLog(),
-        fallback: FallbackStrategy.edgeFocus,
-      );
-      final board = Board(6, 7);
-      final decision = brain.selectMove(board, 1);
-      expect(decision.move == 0 || decision.move == 6, true);
-    });
-
     test('pileFocus prefers columns with existing pieces', () {
       final brain = CloneBrain(
         rules: rules,
@@ -60,67 +49,29 @@ void main() {
       expect(decision.move, 2); // col 2 has 2 pieces, col 5 has 1
     });
 
-    test('prefers wins over draws over losses', () {
-      // Weight: win=1.0, draw=0.5, loss=0.0
-      // Efficiency: 1/(1+movesToEnd)
-      final winState = GameState(
-        board: Board(6, 7),
-        zobristHash: 0,
-        diffusedHash: [0],
-        movePlayed: 3,
-        ply: 0,
-        side: 1,
-        gameId: 'gWin',
-        totalMaterial: 1,
-        materialBalance: 1,
-        outcome: 1,
-        movesToEnd: 5,
+    test('pileFocus on empty board picks the middle column', () {
+      final brain = CloneBrain(
+        rules: rules,
+        log: GameLog(),
+        fallback: FallbackStrategy.pileFocus,
       );
-      final drawState = GameState(
-        board: Board(6, 7),
-        zobristHash: 0,
-        diffusedHash: [0],
-        movePlayed: 4,
-        ply: 0,
-        side: 1,
-        gameId: 'gDraw',
-        totalMaterial: 1,
-        materialBalance: 1,
-        outcome: 0,
-        movesToEnd: 5,
-      );
-      final lossState = GameState(
-        board: Board(6, 7),
-        zobristHash: 0,
-        diffusedHash: [0],
-        movePlayed: 5,
-        ply: 0,
-        side: 1,
-        gameId: 'gLoss',
-        totalMaterial: 1,
-        materialBalance: 1,
-        outcome: -1,
-        movesToEnd: 5,
-      );
-
-      // Win weight: 1.0 * (1/6) ≈ 0.167
-      // Draw weight: 0.5 * (1/6) ≈ 0.083
-      // Loss weight: 0.0 * (1/6) = 0.0
-
-      final winCandidate = WeightedCandidate(winState, 1.0 / 6.0);
-      final drawCandidate = WeightedCandidate(drawState, 0.5 / 6.0);
-      final lossCandidate = WeightedCandidate(lossState, 0.0);
-
-      expect(winCandidate.weight, greaterThan(drawCandidate.weight));
-      expect(drawCandidate.weight, greaterThan(lossCandidate.weight));
+      final decision = brain.selectMove(Board(6, 7), 1);
+      expect(decision.move, 3);
     });
 
-    test('fast wins preferred over slow wins', () {
-      // Fast win: 1.0 * 1/(1+2) = 0.333
-      // Slow win: 1.0 * 1/(1+10) = 0.091
-      final fast = 1.0 / (1.0 + 2);
-      final slow = 1.0 / (1.0 + 10);
-      expect(fast, greaterThan(slow));
+    test('pileFocus tie-break prefers closer-to-middle column', () {
+      final brain = CloneBrain(
+        rules: rules,
+        log: GameLog(),
+        fallback: FallbackStrategy.pileFocus,
+      );
+      final board = Board(6, 7);
+      // Cols 1 and 5 both have one piece; both at distance 2 from mid (=3).
+      // Ties go to lower index (sort stability), so col 1 wins.
+      board.set(5, 1, 1);
+      board.set(5, 5, -1);
+      final decision = brain.selectMove(board, 1);
+      expect(decision.move, 1);
     });
 
     test('createState produces valid GameState', () {
@@ -132,12 +83,10 @@ void main() {
         board: board,
         movePlayed: 3,
         ply: 0,
-        side: 1,
         gameId: 'g1',
       );
 
-      expect(state.zobristHash, isNot(0));
-      expect(state.diffusedHash, isNotEmpty);
+      expect(state.diffusedImage, isNotEmpty);
       expect(state.movePlayed, 3);
       expect(state.gameId, 'g1');
       expect(state.totalMaterial, greaterThan(0));
@@ -149,7 +98,7 @@ void main() {
 
       // Play a quick game and store states
       var current = board;
-      final moves = [3, 4, 3, 4, 3, 4, 3]; // player 1 wins column 3
+      final moves = [3, 4, 3, 4, 3, 4, 3]; // player wins column 3
       for (var i = 0; i < moves.length; i++) {
         final side = i.isEven ? 1 : -1;
         current = rules.applyMove(current, moves[i], side);
@@ -157,21 +106,207 @@ void main() {
           board: current,
           movePlayed: moves[i],
           ply: i,
-          side: side,
           gameId: 'g1',
         );
         brain.log.addState(state);
       }
       brain.log.backfillGame('g1', 1, moves.length);
 
-      // Now query from a similar position
+      // Query from a similar position
       final queryBoard = Board(6, 7);
       queryBoard.set(5, 3, 1);
       queryBoard.set(5, 4, -1);
 
-      final decision = brain.selectMove(queryBoard, 1);
+      final decision = brain.selectMove(queryBoard, -1);
       expect(rules.legalMoves(queryBoard), contains(decision.move));
       expect(decision.narration.isNotEmpty, true);
     });
   });
+
+  CloneBrain buildBrain(FallbackStrategy strategy, {Random? random}) =>
+      CloneBrain(
+        rules: rules,
+        log: GameLog(),
+        fallback: strategy,
+        random: random,
+      );
+
+  group('Builder fallback', () {
+    test('empty board picks the centre column', () {
+      final brain = buildBrain(FallbackStrategy.ownPileAdjacent);
+      final decision = brain.selectMove(Board(6, 7), 1);
+      expect(decision.move, 3);
+    });
+
+    test('single own piece in col 0 plays the legal adjacent (col 1)', () {
+      final brain = buildBrain(FallbackStrategy.ownPileAdjacent);
+      final board = Board(6, 7);
+      board.set(5, 0, 1); // own at col 0, cStar = 0
+      // Adjacents are -1 (off-board) and 1 → only col 1 is legal.
+      final decision = brain.selectMove(board, 1);
+      expect(decision.move, 1);
+    });
+
+    test(
+      'tied own piles pick lower-index cStar then closer-to-mid adjacent',
+      () {
+        final brain = buildBrain(FallbackStrategy.ownPileAdjacent);
+        final board = Board(6, 7);
+        // Own piles tied at cols 1 and 5 (both single piece, both distance 2
+        // from mid=3). Tie-break by lower index → cStar=1. Adjacents are 0
+        // (dist 3) and 2 (dist 1) → col 2.
+        board.set(5, 1, 1);
+        board.set(5, 5, 1);
+        final decision = brain.selectMove(board, 1);
+        expect(decision.move, 2);
+      },
+    );
+
+    test('equidistant adjacents resolve via seeded random tie-break', () {
+      // cStar = 3 (centre). Adjacents 2 and 4 are both distance 1 from mid.
+      // With a seeded Random the choice is deterministic for that seed but
+      // we only contract that the result is one of the two valid candidates.
+      final brain = buildBrain(
+        FallbackStrategy.ownPileAdjacent,
+        random: Random(42),
+      );
+      final board = Board(6, 7);
+      board.set(5, 3, 1);
+      final decision = brain.selectMove(board, 1);
+      expect(decision.move == 2 || decision.move == 4, true);
+    });
+  });
+
+  group('Connector fallback', () {
+    test('empty board picks centre column', () {
+      final brain = buildBrain(FallbackStrategy.greedyConnect);
+      final decision = brain.selectMove(Board(6, 7), 1);
+      expect(decision.move, 3);
+    });
+
+    test('vertical own pair extends upward', () {
+      final brain = buildBrain(FallbackStrategy.greedyConnect);
+      final board = Board(6, 7);
+      // Two own pieces stacked at col 0 (rows 5 and 4). Dropping at col 0
+      // lands at row 3 → vertical run of 3.
+      board.set(5, 0, 1);
+      board.set(4, 0, 1);
+      final decision = brain.selectMove(board, 1);
+      expect(decision.move, 0);
+    });
+
+    test('horizontal own pair extends with mid-distance tie-break', () {
+      final brain = buildBrain(FallbackStrategy.greedyConnect);
+      final board = Board(6, 7);
+      // Own pieces at row 5, cols 2 and 3. Dropping at col 1 → run of 3
+      // (cols 1,2,3). Dropping at col 4 → run of 3 (cols 2,3,4). Both
+      // candidates score 3; col 4 (dist 1 from mid=3) beats col 1 (dist 2).
+      board.set(5, 2, 1);
+      board.set(5, 3, 1);
+      final decision = brain.selectMove(board, 1);
+      expect(decision.move, 4);
+    });
+
+    test('length-4 winning move is selected', () {
+      final brain = buildBrain(FallbackStrategy.greedyConnect);
+      final board = Board(6, 7);
+      // Own pieces at row 5 cols 1,2,3 → playing col 4 wins (run of 4).
+      board.set(5, 1, 1);
+      board.set(5, 2, 1);
+      board.set(5, 3, 1);
+      final decision = brain.selectMove(board, 1);
+      expect(decision.move, 4);
+    });
+  });
+
+  group('Sentinel fallback', () {
+    test('blocks opponent winning move at row level', () {
+      final brain = buildBrain(FallbackStrategy.greedyConnectDefense);
+      final board = Board(6, 7);
+      // Opponent has 3-in-a-row at row 5 cols 0,1,2. Dropping at col 3
+      // lands at row 5 and would extend opponent run to 4. Sentinel blocks
+      // col 3 even though Connector might have preferred a different move.
+      board.set(5, 0, -1);
+      board.set(5, 1, -1);
+      board.set(5, 2, -1);
+      final decision = brain.selectMove(board, 1);
+      expect(decision.move, 3);
+    });
+
+    test('blocks opponent threat over preferring own offence', () {
+      final brain = buildBrain(FallbackStrategy.greedyConnectDefense);
+      final board = Board(6, 7);
+      // Opponent threat at row 5 cols 0,1,2 (block at col 3).
+      // Own pair at row 5 cols 5 and 6 — Connector might prefer extending,
+      // but Sentinel must block first.
+      board.set(5, 0, -1);
+      board.set(5, 1, -1);
+      board.set(5, 2, -1);
+      board.set(5, 5, 1);
+      board.set(5, 6, 1);
+      final decision = brain.selectMove(board, 1);
+      expect(decision.move, 3);
+    });
+
+    test('without opponent threat behaves like Connector', () {
+      final connector = buildBrain(FallbackStrategy.greedyConnect);
+      final sentinel = buildBrain(FallbackStrategy.greedyConnectDefense);
+      final board = Board(6, 7);
+      board.set(5, 2, 1);
+      board.set(5, 3, 1); // no opponent threat present
+      final c = connector.selectMove(board, 1);
+      final s = sentinel.selectMove(board, 1);
+      expect(s.move, c.move);
+    });
+  });
+
+  group('candidate distance ceiling', () {
+    test('zero ceiling rejects all non-exact candidates', () {
+      // Use a rules wrapper with the ceiling pinned to 0. Anything that
+      // isn't a byte-identical diffused image gets dropped, so even with a
+      // populated log the brain must fall back.
+      final tightRules = _ZeroCeilingConnectFourRules();
+      final brain = CloneBrain(
+        rules: tightRules,
+        log: GameLog(),
+        fallback: FallbackStrategy.middleFocus,
+      );
+
+      var board = Board(tightRules.rows, tightRules.cols);
+      final moves = [3, 4, 3, 4, 3, 4, 3];
+      for (var i = 0; i < moves.length; i++) {
+        final side = i.isEven ? 1 : -1;
+        board = tightRules.applyMove(board, moves[i], side);
+        brain.log.addState(
+          brain.createState(
+            board: board,
+            movePlayed: moves[i],
+            ply: i,
+            gameId: 'g1',
+          ),
+        );
+      }
+      brain.log.backfillGame('g1', 1, moves.length);
+
+      // Query a position with the same ply as some stored state (so the
+      // prefilter passes it through) but a shape no stored state actually
+      // has — pieces at the corners. With ceiling=0, no candidate has L1=0
+      // to this query, so all are dropped and the brain falls back.
+      final query = Board(tightRules.rows, tightRules.cols);
+      query.set(5, 0, 1);
+      query.set(5, 6, -1);
+      final decision = brain.selectMove(query, 1);
+
+      expect(decision.usedFallback, true);
+      expect(decision.candidatesFound, 0);
+    });
+  });
+}
+
+/// ConnectFour rules with the candidate distance ceiling pinned to 0 — used
+/// to verify the ceiling filter in `clone_brain` rejects non-identical
+/// candidates regardless of how dense the log is.
+class _ZeroCeilingConnectFourRules extends ConnectFourRules {
+  @override
+  int get maxCandidateL1Distance => 0;
 }

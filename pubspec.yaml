@@ -1,4 +1,4 @@
-name: pi_ying
+name: pi_ying_workspace
 publish_to: none
 
 environment:
@@ -6,3 +6,4 @@ environment:
 
 workspace:
   - packages/game_engine
+  - apps/mobile

@@ -9,38 +9,6 @@ void main() {
     rules = ConnectFourRules();
   });
 
-  group('Canonicalization behavior', () {
-    test('mirror-image games produce identical canonical states', () {
-      final brain = CloneBrain(rules: rules, log: GameLog());
-
-      // Play a move on the left
-      var leftBoard = Board(6, 7);
-      leftBoard = rules.applyMove(leftBoard, 1, 1);
-      final leftState = brain.createState(
-        board: leftBoard,
-        movePlayed: 1,
-        ply: 0,
-        side: 1,
-        gameId: 'left',
-      );
-
-      // Play the mirror move on the right
-      var rightBoard = Board(6, 7);
-      rightBoard = rules.applyMove(rightBoard, 5, 1);
-      final rightState = brain.createState(
-        board: rightBoard,
-        movePlayed: 5,
-        ply: 0,
-        side: 1,
-        gameId: 'right',
-      );
-
-      // Canonical boards should be identical
-      expect(leftState.zobristHash, rightState.zobristHash);
-      expect(leftState.board, rightState.board);
-    });
-  });
-
   group('Clone learning', () {
     test('fallback rate decreases as data grows', () {
       final log = GameLog();
@@ -51,7 +19,6 @@ void main() {
         random: Random(42),
       );
 
-      // Measure fallback rate with no data
       var fallbacks = 0;
       final trials = 20;
       for (var i = 0; i < trials; i++) {
@@ -61,7 +28,8 @@ void main() {
       }
       expect(fallbacks, trials, reason: 'Empty log should always use fallback');
 
-      // Play several games to build data
+      // Play several games to build data. Per-game winner-POV: invert the
+      // whole game when the bot (-1) wins.
       final rng = Random(123);
       for (var g = 0; g < 10; g++) {
         var board = Board(6, 7);
@@ -77,7 +45,6 @@ void main() {
               board: board,
               movePlayed: move,
               ply: moveCount,
-              side: side,
               gameId: 'game-$g',
             ),
           );
@@ -85,18 +52,22 @@ void main() {
           winner = rules.checkWinner(board);
         }
         log.backfillGame('game-$g', winner ?? 0, moveCount);
+        if (winner == -1) {
+          log.replaceStatesForGame(
+            'game-$g',
+            (s) => invertState(s, rules.diffusionKernel),
+          );
+        }
       }
 
-      // Measure fallback rate with data
       fallbacks = 0;
       for (var i = 0; i < trials; i++) {
-        final board = Board(6, 7);
-        var b = board;
+        var b = Board(6, 7);
         final startMoves = [3, 4];
         for (var j = 0; j < startMoves.length; j++) {
           b = rules.applyMove(b, startMoves[j], j.isEven ? 1 : -1);
         }
-        final decision = brain.selectMove(b, 1);
+        final decision = brain.selectMove(b, -1);
         if (decision.usedFallback) fallbacks++;
       }
       expect(
@@ -105,121 +76,125 @@ void main() {
         reason: 'With data, clone should sometimes find candidates',
       );
     });
-
-    test('clone prefers winning moves over losing moves', () {
-      final log = GameLog();
-      final brain = CloneBrain(
-        rules: rules,
-        log: log,
-        fallback: FallbackStrategy.random,
-        random: Random(42),
-      );
-
-      // Store a winning game where col 3 leads to victory
-      var board = Board(6, 7);
-      final winMoves = [3, 0, 3, 0, 3, 0, 3];
-      for (var i = 0; i < winMoves.length; i++) {
-        final side = i.isEven ? 1 : -1;
-        board = rules.applyMove(board, winMoves[i], side);
-        log.addState(
-          brain.createState(
-            board: board,
-            movePlayed: winMoves[i],
-            ply: i,
-            side: side,
-            gameId: 'win-game',
-          ),
-        );
-      }
-      log.backfillGame('win-game', 1, winMoves.length);
-
-      // Store a losing game where col 6 leads to defeat
-      board = Board(6, 7);
-      final loseMoves = [6, 3, 6, 3, 6, 3, 1, 3];
-      for (var i = 0; i < loseMoves.length; i++) {
-        final side = i.isEven ? 1 : -1;
-        board = rules.applyMove(board, loseMoves[i], side);
-        log.addState(
-          brain.createState(
-            board: board,
-            movePlayed: loseMoves[i],
-            ply: i,
-            side: side,
-            gameId: 'lose-game',
-          ),
-        );
-      }
-      log.backfillGame('lose-game', -1, loseMoves.length);
-
-      // Query from empty board — clone should prefer col 3 (winning) over col 6 (losing)
-      final queryBoard = Board(6, 7);
-      final decision = brain.selectMove(queryBoard, 1);
-      expect(decision.usedFallback, false);
-      expect(
-        decision.move,
-        3,
-        reason: 'Clone should prefer the move from winning games',
-      );
-    });
   });
 
-  group('Data growth', () {
-    test('game states are stored correctly through full pipeline', () {
-      final log = GameLog();
-      final brain = CloneBrain(rules: rules, log: log);
+  group('Winner-POV storage', () {
+    // Synthesize a game where the player wins by stacking col 3.
+    // Returns the full move list with sides.
+    List<({int col, int side})> playerWinMoves() => [
+      (col: 3, side: 1),
+      (col: 0, side: -1),
+      (col: 3, side: 1),
+      (col: 0, side: -1),
+      (col: 3, side: 1),
+      (col: 0, side: -1),
+      (col: 3, side: 1),
+    ];
 
+    void synthesizeAndStore(
+      GameLog log,
+      CloneBrain brain,
+      String gameId,
+      List<({int col, int side})> moves,
+      int winner,
+    ) {
       var board = Board(6, 7);
-      board = rules.applyMove(board, 3, 1);
+      for (var i = 0; i < moves.length; i++) {
+        final m = moves[i];
+        board = rules.applyMove(board, m.col, m.side);
+        log.addState(
+          brain.createState(
+            board: board,
+            movePlayed: m.col,
+            ply: i,
+            gameId: gameId,
+          ),
+        );
+      }
+      log.backfillGame(gameId, winner, moves.length);
+      if (winner == -1) {
+        log.replaceStatesForGame(
+          gameId,
+          (s) => invertState(s, rules.diffusionKernel),
+        );
+      }
+    }
 
-      final state = brain.createState(
-        board: board,
-        movePlayed: 3,
-        ply: 0,
-        side: 1,
-        gameId: 'g1',
-      );
-      log.addState(state);
+    test('player-won game is stored as-is (no flip)', () {
+      final log = GameLog();
+      final brain = CloneBrain(rules: rules, log: log, random: Random(7));
+      synthesizeAndStore(log, brain, 'p-won', playerWinMoves(), 1);
 
-      expect(log.states, hasLength(1));
-      expect(state.zobristHash, isNot(0));
-      expect(state.diffusedHash, isNotEmpty);
-      expect(state.totalMaterial, 1);
+      // Boards should still be in display POV: player pieces at +1.
+      final firstRow = log.states.firstWhere((s) => s.gameId == 'p-won');
+      // After player's first move at col 3, (5,3) should be +1 (player's piece).
+      expect(firstRow.board.get(5, 3), 1);
+
+      // Even-ply rows are player moves → outcome=+1.
+      final playerRows =
+          log.states.where((s) => s.gameId == 'p-won' && s.ply.isEven).toList();
+      expect(playerRows.every((s) => s.outcome == 1), true);
+      // Odd-ply rows are clone moves → outcome=-1.
+      final cloneRows =
+          log.states.where((s) => s.gameId == 'p-won' && s.ply.isOdd).toList();
+      expect(cloneRows.every((s) => s.outcome == -1), true);
     });
 
-    test('backfill sets correct outcome from each side perspective', () {
+    test('bot-won game is whole-flipped to winner-POV', () {
       final log = GameLog();
-      final brain = CloneBrain(rules: rules, log: log);
+      final brain = CloneBrain(rules: rules, log: log, random: Random(7));
 
-      var board = Board(6, 7);
-      board = rules.applyMove(board, 3, 1);
-      log.addState(
-        brain.createState(
-          board: board,
-          movePlayed: 3,
-          ply: 0,
-          side: 1,
-          gameId: 'g1',
-        ),
-      );
+      // Construct a clone-vertical-win in col 3: clone moves at indices 1,3,5,7 (col 3 each).
+      final moves = <({int col, int side})>[
+        (col: 0, side: 1),
+        (col: 3, side: -1),
+        (col: 0, side: 1),
+        (col: 3, side: -1),
+        (col: 0, side: 1),
+        (col: 3, side: -1),
+        (col: 6, side: 1),
+        (col: 3, side: -1),
+      ];
+      synthesizeAndStore(log, brain, 'b-won', moves, -1);
 
-      board = rules.applyMove(board, 4, -1);
-      log.addState(
-        brain.createState(
-          board: board,
-          movePlayed: 4,
-          ply: 1,
-          side: -1,
-          gameId: 'g1',
-        ),
-      );
+      // After the whole-game flip, every cell value is sign-flipped from
+      // display: clone pieces (originally -1) are now +1 in stored boards.
+      final lastRow = log.states.lastWhere((s) => s.gameId == 'b-won');
+      // Clone played col 3 four times, so (5,3)..(2,3) all have clone pieces.
+      // Post-flip those positions read +1 (winner=clone=+1 in storage).
+      expect(lastRow.board.get(5, 3), 1);
+      expect(lastRow.board.get(2, 3), 1);
+      // Player's pieces in col 0 should now read -1.
+      expect(lastRow.board.get(5, 0), -1);
 
-      // Player 1 wins
-      log.backfillGame('g1', 1, 2);
-
-      expect(log.states[0].outcome, 1, reason: 'Side 1 should see win');
-      expect(log.states[1].outcome, -1, reason: 'Side -1 should see loss');
-      expect(log.states[0].movesToEnd, 2);
-      expect(log.states[1].movesToEnd, 1);
+      // Odd-ply rows are clone moves; clone won → outcome=+1.
+      final cloneRows =
+          log.states.where((s) => s.gameId == 'b-won' && s.ply.isOdd).toList();
+      expect(cloneRows.every((s) => s.outcome == 1), true);
+      // Even-ply rows are player moves; player lost → outcome=-1.
+      final playerRows =
+          log.states.where((s) => s.gameId == 'b-won' && s.ply.isEven).toList();
+      expect(playerRows.every((s) => s.outcome == -1), true);
     });
+
+    test(
+      'with mixed data, the bot finds non-fallback move via two-query search',
+      () {
+        final log = GameLog();
+        final brain = CloneBrain(rules: rules, log: log, random: Random(7));
+        synthesizeAndStore(log, brain, 'p-won', playerWinMoves(), 1);
+
+        // Bot queries from a position the synthesized game's stored canonicals
+        // could match against (mid-stack).
+        var midStack = Board(6, 7);
+        midStack = rules.applyMove(midStack, 3, 1);
+        midStack = rules.applyMove(midStack, 0, -1);
+        midStack = rules.applyMove(midStack, 3, 1);
+        midStack = rules.applyMove(midStack, 0, -1);
+
+        final decision = brain.selectMove(midStack, -1);
+        expect(decision.candidatesFound, greaterThan(0));
+      },
+    );
   });
 }

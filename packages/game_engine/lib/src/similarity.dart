@@ -1,35 +1,37 @@
+import 'dart:typed_data';
+
 import 'board.dart';
 import 'game_state.dart';
 
 class SimilarityResult {
   final GameState state;
   final int distance;
-  final bool isExactMatch;
 
-  SimilarityResult({
-    required this.state,
-    required this.distance,
-    this.isExactMatch = false,
-  });
+  SimilarityResult({required this.state, required this.distance});
 }
 
-int hammingDistance(List<int> a, List<int> b) {
+/// L1 distance between two equal-length quantized influence images. Both
+/// inputs SHALL have the same length (callers ensure this — for a given game
+/// every row's `diffusedImage` is `rows × cols` long).
+int l1Distance(Int8List a, Int8List b) {
   var distance = 0;
-  final len = a.length < b.length ? a.length : b.length;
-  for (var i = 0; i < len; i++) {
-    distance += _popcount(a[i] ^ b[i]);
+  for (var i = 0; i < a.length; i++) {
+    final d = a[i] - b[i];
+    distance += d < 0 ? -d : d;
   }
   return distance;
 }
 
-int _popcount(int x) {
-  var count = 0;
-  var v = x;
-  while (v != 0) {
-    count += v & 1;
-    v = v >>> 1;
-  }
-  return count;
+/// Decides which stored states are eligible candidates before the L1 ranking
+/// step. Game-specific: Connect Four uses ply-window matching; chess and Go
+/// will plug in their own implementations.
+abstract class CandidateFilter {
+  bool matches(GameState candidate);
+
+  /// Return a strictly more permissive filter for adaptive widening. If the
+  /// initial filter doesn't surface enough candidates, the search loop calls
+  /// `widened()` and retries.
+  CandidateFilter widened();
 }
 
 int computeTotalMaterial(Board board) {
@@ -37,11 +39,7 @@ int computeTotalMaterial(Board board) {
   for (var r = 0; r < board.rows; r++) {
     for (var c = 0; c < board.cols; c++) {
       final v = board.get(r, c);
-      if (v < 0) {
-        total += -v;
-      } else {
-        total += v;
-      }
+      total += v < 0 ? -v : v;
     }
   }
   return total;
@@ -57,52 +55,39 @@ int computeMaterialBalance(Board board) {
   return balance;
 }
 
+/// Find candidates similar to the query image, ranked by ascending L1 distance.
+///
+/// The pre-filter is applied first; if fewer than [minCandidates] survive, the
+/// filter is widened and tried again, up to [maxWidens] rounds. If the loop
+/// runs out of widening rounds, the entire candidate pool is searched.
 List<SimilarityResult> searchSimilar({
-  required int queryZobristHash,
-  required List<int> queryDiffusedHash,
-  required int queryTotalMaterial,
-  required int queryMaterialBalance,
+  required Int8List queryDiffusedImage,
+  required CandidateFilter prefilter,
   required List<GameState> candidates,
   int minCandidates = 5,
-  int initialWindow = 2,
+  int maxWidens = 8,
 }) {
-  final exactMatches = <SimilarityResult>[];
-  for (final state in candidates) {
-    if (state.zobristHash == queryZobristHash) {
-      exactMatches.add(
-        SimilarityResult(state: state, distance: 0, isExactMatch: true),
-      );
-    }
-  }
+  if (candidates.isEmpty) return const [];
 
-  var window = initialWindow;
+  var filter = prefilter;
   var filtered = <GameState>[];
-
-  while (true) {
-    filtered = [];
-    for (final state in candidates) {
-      if (state.zobristHash == queryZobristHash) continue;
-      final matDiff = (state.totalMaterial - queryTotalMaterial).abs();
-      final balDiff = (state.materialBalance - queryMaterialBalance).abs();
-      if (matDiff <= window && balDiff <= window) {
-        filtered.add(state);
-      }
-    }
+  for (var round = 0; round <= maxWidens; round++) {
+    filtered = candidates.where(filter.matches).toList();
     if (filtered.length >= minCandidates) break;
-    window *= 2;
-    if (window > 1000) {
-      filtered =
-          candidates.where((s) => s.zobristHash != queryZobristHash).toList();
+    if (round == maxWidens) {
+      filtered = candidates.toList();
       break;
     }
+    filter = filter.widened();
   }
 
-  final fuzzyResults = <SimilarityResult>[];
-  for (final state in filtered) {
-    final dist = hammingDistance(state.diffusedHash, queryDiffusedHash);
-    fuzzyResults.add(SimilarityResult(state: state, distance: dist));
-  }
-  fuzzyResults.sort((a, b) => a.distance.compareTo(b.distance));
-
-  return [...exactMatches, ...fuzzyResults];
+  final results = [
+    for (final state in filtered)
+      SimilarityResult(
+        state: state,
+        distance: l1Distance(state.diffusedImage, queryDiffusedImage),
+      ),
+  ];
+  results.sort((a, b) => a.distance.compareTo(b.distance));
+  return results;
 }

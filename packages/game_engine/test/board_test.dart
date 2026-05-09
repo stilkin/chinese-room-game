@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:test/test.dart';
 import 'package:game_engine/game_engine.dart';
 
@@ -83,11 +85,9 @@ void main() {
       log.addState(
         GameState(
           board: Board(6, 7),
-          zobristHash: 0,
-          diffusedHash: [0],
+          diffusedImage: Int8List(42),
           movePlayed: 0,
           ply: 0,
-          side: 1,
           gameId: 'g1',
           totalMaterial: 0,
           materialBalance: 0,
@@ -96,11 +96,9 @@ void main() {
       log.addState(
         GameState(
           board: Board(6, 7),
-          zobristHash: 0,
-          diffusedHash: [0],
+          diffusedImage: Int8List(42),
           movePlayed: 1,
           ply: 1,
-          side: -1,
           gameId: 'g1',
           totalMaterial: 0,
           materialBalance: 0,
@@ -120,11 +118,9 @@ void main() {
       log.addState(
         GameState(
           board: Board(6, 7),
-          zobristHash: 0,
-          diffusedHash: [0],
+          diffusedImage: Int8List(42),
           movePlayed: 0,
           ply: 0,
-          side: 1,
           gameId: 'g1',
           totalMaterial: 0,
           materialBalance: 0,
@@ -135,11 +131,9 @@ void main() {
       log.addState(
         GameState(
           board: Board(6, 7),
-          zobristHash: 0,
-          diffusedHash: [0],
+          diffusedImage: Int8List(42),
           movePlayed: 0,
           ply: 0,
-          side: 1,
           gameId: 'g2',
           totalMaterial: 0,
           materialBalance: 0,

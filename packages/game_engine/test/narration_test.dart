@@ -3,25 +3,9 @@ import 'package:game_engine/game_engine.dart';
 
 void main() {
   group('narrate', () {
-    test('exactMatch includes game ID and moves', () {
-      final text = narrate(
-        DecisionContext.exactMatch,
-        gameId: 'g5',
-        movesToEnd: 3,
-      );
-      expect(text, contains('g5'));
-      expect(text, contains('3'));
+    test('fuzzyMatch is non-empty', () {
+      final text = narrate(DecisionContext.fuzzyMatch);
       expect(text.isNotEmpty, true);
-    });
-
-    test('exactMatch without movesToEnd still works', () {
-      final text = narrate(DecisionContext.exactMatch, gameId: 'g5');
-      expect(text, contains('g5'));
-    });
-
-    test('fuzzyMatch includes game ID', () {
-      final text = narrate(DecisionContext.fuzzyMatch, gameId: 'g3');
-      expect(text, contains('g3'));
     });
 
     test('multipleCandidates includes count', () {
@@ -32,9 +16,15 @@ void main() {
       expect(text, contains('4'));
     });
 
-    test('invertedData includes game ID', () {
-      final text = narrate(DecisionContext.invertedData, gameId: 'g12');
-      expect(text, contains('g12'));
+    test('multipleCandidates pluralises games', () {
+      expect(
+        narrate(DecisionContext.multipleCandidates, candidateCount: 1),
+        contains('1 past game'),
+      );
+      expect(
+        narrate(DecisionContext.multipleCandidates, candidateCount: 5),
+        contains('5 past games'),
+      );
     });
 
     test('fallbackUsed includes strategy name', () {
@@ -52,13 +42,7 @@ void main() {
 
     test('every context produces non-empty narration', () {
       for (final ctx in DecisionContext.values) {
-        final text = narrate(
-          ctx,
-          gameId: 'g1',
-          movesToEnd: 3,
-          candidateCount: 2,
-          fallbackName: 'random',
-        );
+        final text = narrate(ctx, candidateCount: 2, fallbackName: 'random');
         expect(text.isNotEmpty, true, reason: '$ctx produced empty narration');
       }
     });
