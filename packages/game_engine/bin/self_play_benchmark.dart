@@ -265,8 +265,8 @@ _GameResult _playGame(
     }
     ply += 1;
 
-    final winner = rules.checkWinner(board);
-    if (winner != null) {
+    if (rules.isTerminal(board, log: log)) {
+      final winner = rules.finalOutcome(board);
       if (record) {
         log.backfillGame(gameId, winner, ply);
         if (winner == -1) {

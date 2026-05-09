@@ -34,10 +34,10 @@ void main() {
       for (var g = 0; g < 10; g++) {
         var board = Board(6, 7);
         var moveCount = 0;
-        int? winner;
-        while (winner == null && rules.legalMoves(board).isNotEmpty) {
+        while (!rules.isTerminal(board, log: log)) {
           final side = moveCount.isEven ? 1 : -1;
-          final legal = rules.legalMoves(board);
+          final legal = rules.legalMoves(board, log: log);
+          if (legal.isEmpty) break;
           final move = legal[rng.nextInt(legal.length)];
           board = rules.applyMove(board, move, side);
           log.addState(
@@ -49,9 +49,9 @@ void main() {
             ),
           );
           moveCount++;
-          winner = rules.checkWinner(board);
         }
-        log.backfillGame('game-$g', winner ?? 0, moveCount);
+        final winner = rules.finalOutcome(board);
+        log.backfillGame('game-$g', winner, moveCount);
         if (winner == -1) {
           log.replaceStatesForGame(
             'game-$g',

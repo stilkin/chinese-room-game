@@ -16,13 +16,19 @@ class ConnectFourRules extends GameRules {
   List<int> get pieceValues => const [-1, 1];
 
   @override
-  List<int> legalMoves(Board board) {
+  List<int> legalMoves(Board board, {int side = 1, GameLog? log}) {
     final moves = <int>[];
     for (var c = 0; c < cols; c++) {
       if (board.get(0, c) == 0) moves.add(c);
     }
     return moves;
   }
+
+  @override
+  bool isTerminal(Board board, {GameLog? log}) => checkWinner(board) != null;
+
+  @override
+  int finalOutcome(Board board) => checkWinner(board) ?? 0;
 
   @override
   Board applyMove(Board board, int move, int side) {

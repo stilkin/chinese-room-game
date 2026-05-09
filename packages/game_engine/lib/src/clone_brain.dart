@@ -72,7 +72,7 @@ class CloneBrain {
   }
 
   MoveDecision selectMove(Board currentBoard, int side) {
-    final legal = rules.legalMoves(currentBoard);
+    final legal = rules.legalMoves(currentBoard, side: side, log: log);
     if (legal.isEmpty) {
       return MoveDecision(
         move: -1,
