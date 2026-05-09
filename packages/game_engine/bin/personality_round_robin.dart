@@ -111,9 +111,12 @@ void main(List<String> args) {
     var lost = 0;
     for (final b in names) {
       if (a == b) continue;
-      played += gamesPerDir;
+      // Each pair plays gamesPerDir games per direction, so 2× per opponent.
+      // wins[a][b] aggregates across both directions in _playGame; draws[a][b]
+      // does not, so we must add the (b, a) draws here too.
+      played += 2 * gamesPerDir;
       won += wins[a]![b]!;
-      drew += draws[a]![b]!;
+      drew += draws[a]![b]! + draws[b]![a]!;
       lost += wins[b]![a]!;
     }
     final winRate = played == 0 ? 0.0 : won / played;

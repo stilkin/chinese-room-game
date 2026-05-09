@@ -6,8 +6,8 @@ The system SHALL support fallback strategies that fire when the clone has no rel
 
 - `random` — pick a uniformly random legal column. *User-facing label: "Chaotic".*
 - `middleFocus` — pick the legal column closest to the middle. *Benchmark-only; not surfaced via configuration.*
-- `pileFocus` — pick the legal column with the highest pile of pieces (any colour); tie-break by closeness to middle. *User-facing label: "Stacker".*
-- `ownPileAdjacent` — pick a column adjacent to the tallest stack of own (`+1`) pieces; tie-break by closeness to middle. *User-facing label: "Builder". Default for new installs.*
+- `pileFocus` — pick the legal column with the highest pile of pieces (any colour); tie-break by closeness to middle. *User-facing label: "Stacker". Default for new installs.*
+- `ownPileAdjacent` — pick a column adjacent to the tallest stack of own (`+1`) pieces; tie-break by closeness to middle. *User-facing label: "Builder".*
 - `greedyConnect` — for each legal column, simulate dropping an own piece, score the column by the maximum length of contiguous own pieces through the resulting cell across the four standard axes; pick the highest-scoring column with mid-distance tie-break. *User-facing label: "Connector".*
 - `greedyConnectDefense` — if the opponent has any move that produces a length-4 own-colour run for them on their next turn, play the most central such column to block; otherwise behave as `greedyConnect`. *User-facing label: "Sentinel".*
 
@@ -65,4 +65,4 @@ The strategy `edgeFocus` is removed.
 
 ### Requirement: Edge-focus fallback
 **Reason**: Edge-focus is a known weak strategy for Connect Four (corners are weak), has no narrative purpose, and was not used by the benchmark. It is removed entirely from the engine.
-**Migration**: any persisted `edgeFocus` config value SHALL be silently mapped to `ownPileAdjacent` at the persistence layer.
+**Migration**: any persisted value not in the user-facing set (including legacy `edgeFocus` and benchmark-only `middleFocus`) SHALL be silently mapped to `pileFocus` at the persistence layer.

@@ -38,6 +38,7 @@ Future<void> _settle(GameNotifier notifier) async {
     if (notifier.outcome != null) return;
     if (notifier.currentSide == 1) return;
   }
+  fail('Timed out waiting for GameNotifier to settle');
 }
 
 void main() {

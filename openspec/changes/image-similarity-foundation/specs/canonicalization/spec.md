@@ -40,16 +40,26 @@ Cross-side rows (Q_A's `outcome=-1`, Q_B's `outcome=+1`, etc.) SHALL be ignored 
 - **WHEN** the four queries return their results
 - **THEN** the brain SHALL keep only `outcome=+1` rows from `Q_A` and `Q_A mirror`, and only `outcome=-1` rows from `Q_B` and `Q_B mirror`; cross-side rows SHALL be discarded
 
-### Requirement: Sign-aware distance-weighted vote (replaces Hamming-distance variant)
+### Requirement: Distance-weighted heatmap accumulation (replaces Hamming-distance vote)
 Each candidate's weight SHALL be computed as:
 ```
-weight = sign × (1 / (1 + movesToEnd)) × (1 / (1 + l1Distance))
+weight = (1 / (1 + movesToEnd)) × (1 / (1 + l1Distance))
 ```
-Where `sign` is `+1` for candidates from `Q_A`/`Q_A_mirror` and `-1` for candidates from `Q_B`/`Q_B_mirror`. `l1Distance` is the matcher's L1 distance over Int8 diffused images.
+Weights SHALL be always positive, regardless of the originating query. `l1Distance` is the matcher's L1 distance over Int8 diffused images.
 
-The aggregation step is delegated to `InfluenceOverlayStrategy` (see `move-selection` spec): each candidate contributes `weight × candidate.diffusedImage` (mirrored if from a mirror query) to a single board-shaped signed heatmap. The legal move with the highest heatmap score (via `MoveScorer`) is selected. If the highest score is `≤ 0`, the brain falls back instead.
+The aggregation step is delegated to `InfluenceOverlayStrategy` (see `move-selection` spec): each candidate contributes `weight × candidate.diffusedImage` (mirrored if from a mirror query) to a single board-shaped signed heatmap. The candidate image's *natural sign* carries the win/loss lesson — winner-mover candidates have positive territory at their mover's cells (push the heatmap up there → "play here"), loser-mover candidates have negative territory there (push the heatmap down there → "avoid here"). An explicit sign multiplier on the weight would double-count and invert the loss signal, so it is intentionally omitted.
+
+The legal move with the highest heatmap score (via `MoveScorer`) is selected. If the highest score is `≤ 0`, the brain falls back instead.
 
 (Cross-references the move-selection spec for the heatmap accumulation and scoring details.)
+
+#### Scenario: Closer match contributes more weight
+- **WHEN** two candidates with the same `outcome` and `movesToEnd` differ in `l1Distance`
+- **THEN** the candidate with smaller `l1Distance` SHALL contribute a larger-magnitude term to the heatmap
+
+#### Scenario: All-losing chosen move routes to fallback
+- **WHEN** the chosen move's heatmap score is `≤ 0`
+- **THEN** the brain SHALL invoke the configured fallback strategy and report `usedFallback=true` with `narration=DecisionContext.allLosing`
 
 ## REMOVED Requirements
 

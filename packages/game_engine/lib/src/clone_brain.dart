@@ -137,7 +137,7 @@ class CloneBrain {
       return MoveDecision(
         move: move,
         narration: narrate(DecisionContext.allLosing),
-        usedFallback: false,
+        usedFallback: true,
         candidatesFound: totalResults,
       );
     }

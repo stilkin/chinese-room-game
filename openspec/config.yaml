@@ -18,19 +18,24 @@ context: |
     - server/ — Dart backend (phase 3), depends on game_engine.
 
   Core engine: boards are 2D Int8 arrays. Similarity is purely perceptual —
-  diffusion kernels turn boards into influence maps, which collapse to a
-  bit-hash; matching is Hamming distance over those hashes plus a material
-  pre-filter. Diffusion kernels are game-specific (adding a new game means a
-  rules module + diffusion kernel).
+  diffusion kernels turn boards into influence maps, which are quantized to
+  Int8 diffused images; matching is L1 distance over those images, with a
+  per-game candidate prefilter (e.g. ply-window for Connect Four) that
+  widens adaptively when too few candidates pass. Diffusion kernels are
+  game-specific (adding a new game means a rules module + diffusion kernel
+  + prefilter + move scorer).
 
   Storage convention: per-game winner-POV. At game end every row of the
   finished game is aligned so the winner's pieces are +1 — player wins are
   stored as-is; bot wins are flipped via invertState; draws are stored as-is.
-  At decision time the bot runs two queries (one with flipPerspective(current),
-  one unchanged) and combines outcome=+1 candidates from the first query
-  (its own past wins, positive weight) with outcome=-1 candidates from the
-  second (its own past losses, negative weight) in a sign-aware,
-  distance-weighted vote.
+  At decision time the bot runs four queries (perspective × mirror) against
+  the stored data, keeps outcome=+1 rows from the perspective-flipped queries
+  (own past wins) and outcome=-1 rows from the unflipped queries (own past
+  losses), and accumulates each candidate's diffused image (mirrored if from
+  a mirror query) into a single signed heatmap with always-positive weights —
+  the candidate image's natural sign carries the win/loss lesson. The legal
+  move with the highest heatmap score is selected; if that score is ≤ 0, the
+  brain falls back to a personality strategy.
 
   Build phases: (1) game engine + mobile Connect Four MVP, (2) diffusion +
   polish, (3) online backend + league + web, (4) more games. Validate fun

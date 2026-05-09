@@ -162,11 +162,7 @@ class BoardPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(BoardPainter old) =>
-      old.board != board ||
-      old.excludeRow != excludeRow ||
-      old.excludeCol != excludeCol ||
-      old.winningCells != winningCells;
+  bool shouldRepaint(BoardPainter old) => true;
 }
 
 int? columnFromTap(Offset localPos, Size size, int cols) {

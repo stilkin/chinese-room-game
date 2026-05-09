@@ -19,76 +19,94 @@ class StartScreen extends StatelessWidget {
             : (notifier.cloneWins / notifier.gamesPlayed) * 100;
         return Scaffold(
           body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Align(
-                    alignment: Alignment.topRight,
-                    child: IconButton(
-                      onPressed: () =>
-                          Navigator.pushNamed(context, '/settings'),
-                      icon: const Icon(
-                        Icons.settings,
-                        color: PiYingTheme.amber,
+            // LayoutBuilder + ConstrainedBox(minHeight) + IntrinsicHeight is the
+            // standard Flutter pattern for "scroll if needed but let Spacer
+            // expand when there's room." Without IntrinsicHeight the Spacer
+            // throws inside a SingleChildScrollView (unbounded vertical axis).
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: IntrinsicHeight(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 16,
                       ),
-                      tooltip: 'Settings',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Align(
+                            alignment: Alignment.topRight,
+                            child: IconButton(
+                              onPressed: () =>
+                                  Navigator.pushNamed(context, '/settings'),
+                              icon: const Icon(
+                                Icons.settings,
+                                color: PiYingTheme.amber,
+                              ),
+                              tooltip: 'Settings',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Center(
+                            child: Image.asset(
+                              'assets/icon/icon.png',
+                              width: 96,
+                              height: 96,
+                              filterQuality: FilterQuality.none,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            'PI-YING',
+                            textAlign: TextAlign.center,
+                            style: textTheme.headlineMedium?.copyWith(
+                              letterSpacing: 4,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'connect four against\nyour learning clone',
+                            textAlign: TextAlign.center,
+                            style: textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 32),
+                          _StatsPanel(
+                            cloneWinPct: cloneWinPct,
+                            gamesPlayed: notifier.gamesPlayed,
+                            playerWins: notifier.playerWins,
+                            cloneWins: notifier.cloneWins,
+                            draws: notifier.draws,
+                          ),
+                          const SizedBox(height: 16),
+                          Text('LAST GAMES', style: textTheme.titleSmall),
+                          const SizedBox(height: 8),
+                          RecentGamesStrip(outcomes: notifier.recentOutcomes),
+                          const Spacer(),
+                          if (notifier.hasOngoingGame) ...[
+                            FilledButton(
+                              onPressed: () => _onResume(context),
+                              child: const Text('RESUME'),
+                            ),
+                            const SizedBox(height: 12),
+                            OutlinedButton(
+                              onPressed: () =>
+                                  _onNewGame(context, confirm: true),
+                              child: const Text('NEW GAME'),
+                            ),
+                          ] else
+                            FilledButton(
+                              onPressed: () =>
+                                  _onNewGame(context, confirm: false),
+                              child: const Text('NEW GAME'),
+                            ),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Center(
-                    child: Image.asset(
-                      'assets/icon/icon.png',
-                      width: 96,
-                      height: 96,
-                      filterQuality: FilterQuality.none, // keep pixelated
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'PI-YING',
-                    textAlign: TextAlign.center,
-                    style: textTheme.headlineMedium?.copyWith(letterSpacing: 4),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'connect four against\nyour learning clone',
-                    textAlign: TextAlign.center,
-                    style: textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 32),
-                  // Stats panel — clone win rate front and center.
-                  _StatsPanel(
-                    cloneWinPct: cloneWinPct,
-                    gamesPlayed: notifier.gamesPlayed,
-                    playerWins: notifier.playerWins,
-                    cloneWins: notifier.cloneWins,
-                    draws: notifier.draws,
-                  ),
-                  const SizedBox(height: 16),
-                  // Recent-games timeline — most recent on the right.
-                  Text('LAST GAMES', style: textTheme.titleSmall),
-                  const SizedBox(height: 8),
-                  RecentGamesStrip(outcomes: notifier.recentOutcomes),
-                  const Spacer(),
-                  if (notifier.hasOngoingGame) ...[
-                    FilledButton(
-                      onPressed: () => _onResume(context),
-                      child: const Text('RESUME'),
-                    ),
-                    const SizedBox(height: 12),
-                    OutlinedButton(
-                      onPressed: () => _onNewGame(context, confirm: true),
-                      child: const Text('NEW GAME'),
-                    ),
-                  ] else
-                    FilledButton(
-                      onPressed: () => _onNewGame(context, confirm: false),
-                      child: const Text('NEW GAME'),
-                    ),
-                  const SizedBox(height: 16),
-                ],
+                ),
               ),
             ),
           ),

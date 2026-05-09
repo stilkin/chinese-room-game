@@ -21,12 +21,12 @@ This change replaces the four-radio picker with a five-step **complexity slider*
   - `greedyConnectDefense` — labelled **"Sentinel"**: if the opponent has a move that wins on their next turn, play that column to block; otherwise play `greedyConnect`. (Block only winning moves, not threats — keeps the bot firmly out of minimax territory.)
 - **Replace** the radio-button settings UI with a **discrete 5-step slider** showing one personality name at a time:
   1. Chaotic (random)
-  2. Stacker (existing pileFocus)
-  3. **Builder** (ownPileAdjacent) ← default
+  2. Builder (ownPileAdjacent)
+  3. **Stacker** (existing pileFocus) ← default
   4. Connector (greedyConnect)
   5. Sentinel (greedyConnectDefense)
-- **Migrate** persisted config: any stored `edgeFocus` or `middleFocus` value is silently mapped to `ownPileAdjacent` (Builder) on read.
-- **Validate ordering via benchmark** before ship: round-robin among the four user-facing personalities. Connector should beat Builder should beat Stacker should beat Chaotic. If the ordering doesn't hold, the slider semantics are wrong and we fix them before shipping.
+- **Migrate** persisted config: any stored value not in the user-facing set (including legacy `edgeFocus` and `middleFocus`) is silently mapped to `pileFocus` (Stacker) on read.
+- **Validate ordering via benchmark** before ship: round-robin among the four offence-bearing personalities. Original expectation was Connector > Builder > Stacker > Chaotic; the head-to-head gate showed Stacker beating Builder, so the slider order between positions 2 and 3 was swapped to match observed strength. Final ordering: Chaotic < Builder < Stacker < Connector ≲ Sentinel.
 
 ## Capabilities
 
@@ -37,7 +37,7 @@ This change replaces the four-radio picker with a five-step **complexity slider*
 ### Modified Capabilities
 
 - `clone-brain`: the **Cold-start fallback personalities** requirement is rewritten. Edge focus is removed. Three new personalities are added. The middle-focus personality survives as a benchmark-only construct, no longer surfaced via configuration.
-- `settings-screen`: the **Fallback personality picker** requirement is rewritten. Radio-button list becomes a 5-step slider with named labels and a one-line description per step. The default changes from "Random" to "Builder."
+- `settings-screen`: the **Fallback personality picker** requirement is rewritten. Radio-button list becomes a 5-step slider with named labels and a one-line description per step. The default changes from "Random" to "Stacker."
 
 ## Impact
 
@@ -46,10 +46,10 @@ This change replaces the four-radio picker with a five-step **complexity slider*
 - `packages/game_engine/test/clone_brain_test.dart` — new unit tests for Builder/Connector/Sentinel.
 - `packages/game_engine/bin/self_play_benchmark.dart` — accepts the new coach names as CLI tokens (`builder`, `connector`, `sentinel`); drop `edge` token.
 - `apps/mobile/lib/src/screens/settings_screen.dart` — radio list → slider widget. New labels and per-step description text.
-- `apps/mobile/lib/src/db/database_service.dart` — `loadFallback` translates legacy stored values (`edgeFocus`, `middleFocus`) to `ownPileAdjacent` at read time.
-- `apps/mobile/lib/src/state/game_notifier.dart` — default fallback in cold-start path: `ownPileAdjacent` (was `random`).
-- `apps/mobile/test/database_service_test.dart` — round-trip test additions for the three new values; legacy-mapping test for `edgeFocus`/`middleFocus` → `ownPileAdjacent`.
+- `apps/mobile/lib/src/db/database_service.dart` — `loadFallback` translates any non-user-facing stored value (including legacy `edgeFocus` and benchmark-only `middleFocus`) to `pileFocus` at read time.
+- `apps/mobile/lib/src/state/game_notifier.dart` — default fallback in cold-start path: `pileFocus` (was `random`).
+- `apps/mobile/test/database_service_test.dart` — round-trip test additions for the three new values; legacy-mapping test for `edgeFocus`/`middleFocus` → `pileFocus`.
 - `apps/mobile/test/game_notifier_test.dart` — minor: default-fallback assertion changes if it asserts on the literal value.
 - **Storage**: no schema change. `clone_config` value column already stores arbitrary text.
-- **Migration**: non-destructive. Existing user choice is honoured if it's still valid; legacy/hidden values silently become Builder.
+- **Migration**: non-destructive. Existing user choice is honoured if it's still valid; legacy/hidden values silently become Stacker.
 - **Behavioural**: cold-start games feel more deliberate. Strongest fallback (Sentinel) is recognisably stronger than weakest (Chaotic) but still beatable by an attentive player and clearly *not* minimax — the clone's gimmick stays intact.
