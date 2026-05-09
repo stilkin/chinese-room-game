@@ -19,6 +19,10 @@ class GameNotifier extends ChangeNotifier {
   int _ply = 0;
   bool _isCloneThinking = false;
   int _gamesPlayed = 0;
+  int _playerWins = 0;
+  int _cloneWins = 0;
+  int _draws = 0;
+  List<int> _recentOutcomes = const [];
   FallbackStrategy _fallback;
   bool _hasOngoingGame = false;
 
@@ -36,6 +40,10 @@ class GameNotifier extends ChangeNotifier {
   int? get outcome => _outcome;
   String get narration => _narration;
   int get gamesPlayed => _gamesPlayed;
+  int get playerWins => _playerWins;
+  int get cloneWins => _cloneWins;
+  int get draws => _draws;
+  List<int> get recentOutcomes => _recentOutcomes;
   bool get isCloneThinking => _isCloneThinking;
   bool get isPlayerTurn =>
       _currentSide == 1 && _outcome == null && !_isCloneThinking;
@@ -49,13 +57,22 @@ class GameNotifier extends ChangeNotifier {
     }
     _fallback = await db.loadFallback();
     _brain = CloneBrain(rules: rules, log: log, fallback: _fallback);
-    _gamesPlayed = await db.getGamesPlayedCount();
+    await _refreshStats();
     final ongoingId = await db.findOngoingGame();
     if (ongoingId != null) {
       _gameId = ongoingId;
       _hasOngoingGame = true;
     }
     notifyListeners();
+  }
+
+  Future<void> _refreshStats() async {
+    final stats = await db.loadOutcomeStats();
+    _gamesPlayed = stats.total;
+    _playerWins = stats.playerWins;
+    _cloneWins = stats.cloneWins;
+    _draws = stats.draws;
+    _recentOutcomes = await db.loadRecentOutcomes();
   }
 
   Future<void> startNewGame() async {
@@ -180,8 +197,8 @@ class GameNotifier extends ChangeNotifier {
       await _invertCurrentGameToWinnerPerspective();
     }
 
-    _gamesPlayed += 1;
     _hasOngoingGame = false;
+    await _refreshStats();
   }
 
   Future<void> _invertCurrentGameToWinnerPerspective() async {
@@ -204,6 +221,10 @@ class GameNotifier extends ChangeNotifier {
     await db.deleteAllData();
     log.states.clear();
     _gamesPlayed = 0;
+    _playerWins = 0;
+    _cloneWins = 0;
+    _draws = 0;
+    _recentOutcomes = const [];
     _hasOngoingGame = false;
     _gameId = '';
     notifyListeners();

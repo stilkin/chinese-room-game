@@ -242,6 +242,50 @@ class DatabaseService {
     return (rows.first['c'] as int?) ?? 0;
   }
 
+  /// Returns up to [limit] completed games' outcomes ordered most-recent-last
+  /// (so a UI can render them left-to-right as a timeline). Each entry is the
+  /// game's `outcome` column: `+1` (player won), `-1` (clone won), `0` (draw).
+  Future<List<int>> loadRecentOutcomes({int limit = 100}) async {
+    final rows = await db.query(
+      'games',
+      columns: ['outcome'],
+      where: 'outcome IS NOT NULL',
+      orderBy: 'started_at DESC',
+      limit: limit,
+    );
+    // Reverse so caller receives oldest-first within the window.
+    return rows.reversed.map((r) => r['outcome'] as int).toList();
+  }
+
+  /// Aggregate win/loss/draw counts across all completed games.
+  Future<({int total, int playerWins, int cloneWins, int draws})>
+  loadOutcomeStats() async {
+    final rows = await db.rawQuery('''
+      SELECT outcome, COUNT(*) AS c
+      FROM games
+      WHERE outcome IS NOT NULL
+      GROUP BY outcome
+    ''');
+    var player = 0, clone = 0, draws = 0;
+    for (final row in rows) {
+      final o = row['outcome'] as int;
+      final c = (row['c'] as int?) ?? 0;
+      if (o == 1) {
+        player = c;
+      } else if (o == -1) {
+        clone = c;
+      } else {
+        draws = c;
+      }
+    }
+    return (
+      total: player + clone + draws,
+      playerWins: player,
+      cloneWins: clone,
+      draws: draws,
+    );
+  }
+
   Future<FallbackStrategy> loadFallback() async {
     final rows = await db.query(
       'clone_config',

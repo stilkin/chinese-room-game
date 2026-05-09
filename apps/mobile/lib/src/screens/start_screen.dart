@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../app_scope.dart';
+import '../theme.dart';
+import '../widgets/recent_games_strip.dart';
 
 class StartScreen extends StatelessWidget {
   const StartScreen({super.key});
@@ -8,74 +10,84 @@ class StartScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final notifier = AppScope.of(context);
+    final textTheme = Theme.of(context).textTheme;
     return ListenableBuilder(
       listenable: notifier,
       builder: (context, _) {
+        final cloneWinPct = notifier.gamesPlayed == 0
+            ? 0.0
+            : (notifier.cloneWins / notifier.gamesPlayed) * 100;
         return Scaffold(
           body: SafeArea(
-            child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Pi-Ying',
-                    style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: IconButton(
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/settings'),
+                      icon: const Icon(
+                        Icons.settings,
+                        color: PiYingTheme.amber,
+                      ),
+                      tooltip: 'Settings',
+                    ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Connect Four against a learning clone',
-                    style: TextStyle(fontSize: 14, color: Colors.black54),
+                  Center(
+                    child: Image.asset(
+                      'assets/icon/icon.png',
+                      width: 96,
+                      height: 96,
+                      filterQuality: FilterQuality.none, // keep pixelated
+                    ),
                   ),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 24),
+                  Text(
+                    'PI-YING',
+                    textAlign: TextAlign.center,
+                    style: textTheme.headlineMedium?.copyWith(letterSpacing: 4),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'connect four against\nyour learning clone',
+                    textAlign: TextAlign.center,
+                    style: textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 32),
+                  // Stats panel — clone win rate front and center.
+                  _StatsPanel(
+                    cloneWinPct: cloneWinPct,
+                    gamesPlayed: notifier.gamesPlayed,
+                    playerWins: notifier.playerWins,
+                    cloneWins: notifier.cloneWins,
+                    draws: notifier.draws,
+                  ),
+                  const SizedBox(height: 16),
+                  // Recent-games timeline — most recent on the right.
+                  Text('LAST GAMES', style: textTheme.titleSmall),
+                  const SizedBox(height: 8),
+                  RecentGamesStrip(outcomes: notifier.recentOutcomes),
+                  const Spacer(),
                   if (notifier.hasOngoingGame) ...[
                     FilledButton(
                       onPressed: () => _onResume(context),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 32,
-                          vertical: 12,
-                        ),
-                        child: Text('Resume', style: TextStyle(fontSize: 18)),
-                      ),
+                      child: const Text('RESUME'),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     OutlinedButton(
                       onPressed: () => _onNewGame(context, confirm: true),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 8,
-                        ),
-                        child: Text('New Game'),
-                      ),
+                      child: const Text('NEW GAME'),
                     ),
                   ] else
                     FilledButton(
                       onPressed: () => _onNewGame(context, confirm: false),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 32,
-                          vertical: 12,
-                        ),
-                        child: Text('New Game', style: TextStyle(fontSize: 18)),
-                      ),
+                      child: const Text('NEW GAME'),
                     ),
                   const SizedBox(height: 16),
-                  OutlinedButton(
-                    onPressed: () => Navigator.pushNamed(context, '/settings'),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 8,
-                      ),
-                      child: Text('Settings'),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  Text(
-                    '${notifier.gamesPlayed} games played',
-                    style: const TextStyle(color: Colors.black54),
-                  ),
                 ],
               ),
             ),
@@ -93,7 +105,7 @@ class StartScreen extends StatelessWidget {
     } catch (_) {
       messenger.showSnackBar(
         const SnackBar(
-          content: Text("Couldn't resume that game — it's been cleared."),
+          content: Text("couldn't resume that game — it's been cleared."),
         ),
       );
       return;
@@ -108,18 +120,18 @@ class StartScreen extends StatelessWidget {
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Discard your unfinished game?'),
+          title: const Text('DISCARD?'),
           content: const Text(
-            'Starting a new game will erase your current one.',
+            'starting a new game will erase your current one.',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: const Text('CANCEL'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Discard & start'),
+              child: const Text('DISCARD'),
             ),
           ],
         ),
@@ -129,5 +141,66 @@ class StartScreen extends StatelessWidget {
     await notifier.startNewGame();
     if (!context.mounted) return;
     Navigator.pushNamed(context, '/game');
+  }
+}
+
+class _StatsPanel extends StatelessWidget {
+  final double cloneWinPct;
+  final int gamesPlayed;
+  final int playerWins;
+  final int cloneWins;
+  final int draws;
+
+  const _StatsPanel({
+    required this.cloneWinPct,
+    required this.gamesPlayed,
+    required this.playerWins,
+    required this.cloneWins,
+    required this.draws,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: PiYingTheme.surface,
+        border: Border.all(color: PiYingTheme.outline, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('YOUR CLONE', style: textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                '${cloneWinPct.toStringAsFixed(0)}%',
+                style: textTheme.headlineLarge?.copyWith(
+                  color: PiYingTheme.amber,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'win rate',
+                style: textTheme.bodyMedium?.copyWith(
+                  color: PiYingTheme.onSurfaceMuted,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$gamesPlayed games · '
+            'you $playerWins · clone $cloneWins'
+            '${draws > 0 ? ' · draws $draws' : ''}',
+            style: textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
   }
 }
