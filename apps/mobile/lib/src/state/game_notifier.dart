@@ -25,8 +25,9 @@ class GameNotifier extends ChangeNotifier {
   List<int> _recentOutcomes = const [];
   FallbackStrategy _fallback;
   bool _hasOngoingGame = false;
-  // Latest move info — used by the UI to animate the most recent piece
-  // dropping in. -1 when no move has been made yet (start of a game).
+  // Latest move's intersection — used by the UI to highlight the most recent
+  // placement with a small ring. -1 when no move has been made yet (start of
+  // a game) or when the most recent move was a pass.
   int _lastMoveRow = -1;
   int _lastMoveCol = -1;
   int _lastMoveSide = 0;
@@ -148,28 +149,38 @@ class GameNotifier extends ChangeNotifier {
     }
   }
 
-  Future<void> playerMove(int col) async {
+  Future<void> playerMove(int move) async {
     if (_outcome != null || _currentSide != 1 || _isCloneThinking) return;
-    if (!rules.legalMoves(_displayBoard).contains(col)) return;
+    final legal = rules.legalMoves(_displayBoard, side: 1, log: log);
+    if (!legal.contains(move)) return;
 
     // Synchronous state mutation: anything below sees turn already flipped.
-    final state = _applySync(col, 1);
+    final state = _applySync(move, 1);
     _currentSide = -1;
-    final winner = rules.checkWinner(_displayBoard);
-    if (winner == null) {
+    final terminal = rules.isTerminal(_displayBoard, log: log);
+    if (!terminal) {
       _isCloneThinking = true;
     }
     notifyListeners();
 
     await db.insertGameState(state);
 
-    if (winner != null) {
-      await _endGame(winner);
+    if (terminal) {
+      await _endGame(rules.finalOutcome(_displayBoard));
       notifyListeners();
       return;
     }
 
     scheduleMicrotask(_cloneTurn);
+  }
+
+  /// Player passes their turn. Currently Go-only; CF doesn't support passing
+  /// and the call no-ops there. Returns silently if it's not the player's
+  /// turn or the game is already over.
+  Future<void> pass() async {
+    final pm = _passMove;
+    if (pm == null) return;
+    await playerMove(pm);
   }
 
   Future<void> _cloneTurn() async {
@@ -178,9 +189,9 @@ class GameNotifier extends ChangeNotifier {
     final state = _applySync(decision.move, -1);
     await db.insertGameState(state);
 
-    final winner = rules.checkWinner(_displayBoard);
-    if (winner != null) {
-      await _endGame(winner);
+    final terminal = rules.isTerminal(_displayBoard, log: log);
+    if (terminal) {
+      await _endGame(rules.finalOutcome(_displayBoard));
     } else {
       _currentSide = 1;
     }
@@ -188,23 +199,23 @@ class GameNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  GameState _applySync(int col, int side) {
-    _displayBoard = rules.applyMove(_displayBoard, col, side);
-    // Find the row the new piece landed on so the UI can animate the drop.
-    var landingRow = -1;
-    for (var r = 0; r < _displayBoard.rows; r++) {
-      if (_displayBoard.get(r, col) == side) {
-        landingRow = r;
-        break;
-      }
+  GameState _applySync(int move, int side) {
+    _displayBoard = rules.applyMove(_displayBoard, move, side);
+    final r = move ~/ rules.cols;
+    final c = move % rules.cols;
+    if (r >= 0 && r < rules.rows) {
+      _lastMoveRow = r;
+      _lastMoveCol = c;
+    } else {
+      // Non-board move (e.g. Go pass). The widget treats -1 as "no highlight".
+      _lastMoveRow = -1;
+      _lastMoveCol = -1;
     }
-    _lastMoveRow = landingRow;
-    _lastMoveCol = col;
     _lastMoveSide = side;
     _moveCounter += 1;
     final state = _brain.createState(
       board: _displayBoard,
-      movePlayed: col,
+      movePlayed: move,
       ply: _ply,
       gameId: _gameId,
     );
@@ -212,6 +223,13 @@ class GameNotifier extends ChangeNotifier {
     _ply += 1;
     return state;
   }
+
+  /// The integer encoding of the pass move for the active rules, or null if
+  /// the game has no pass move. Computed once via type-check rather than
+  /// dragging an abstract `passMove` getter through `GameRules` for one user.
+  late final int? _passMove = (rules is GoRules)
+      ? (rules as GoRules).passMove
+      : null;
 
   Future<void> _endGame(int winner) async {
     _outcome = winner;

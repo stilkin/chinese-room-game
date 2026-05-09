@@ -12,7 +12,7 @@ GameState _state({
   Board? board,
   int materialBalance = 0,
 }) {
-  final b = board ?? Board(6, 7);
+  final b = board ?? Board(13, 13);
   // Distinct image so round-trip assertions can detect drift.
   final image = Int8List.fromList(
     List<int>.generate(b.rows * b.cols, (i) => ((i * 7) % 31) - 15),
@@ -63,16 +63,15 @@ void main() {
   });
 
   test('preserves non-empty board through blob round-trip', () async {
-    final board = Board.from(const [
-      [0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 1, 0, 0, 0],
-      [-1, 0, 1, -1, 1, 0, 0],
-    ]);
+    // Sparse 13×13 with stones at a few intersections.
+    final board = Board(13, 13);
+    board.set(6, 6, 1); // centre, white
+    board.set(6, 7, -1);
+    board.set(7, 6, -1);
+    board.set(0, 0, 1);
+    board.set(12, 12, -1);
     await service.insertGameState(
-      _state(gameId: 'g1', ply: 5, movePlayed: 2, board: board),
+      _state(gameId: 'g1', ply: 5, movePlayed: 6 * 13 + 6, board: board),
     );
 
     final loaded = await service.loadAllGameStates();
@@ -84,13 +83,13 @@ void main() {
     () async {
       await service.insertGame('g1');
       await service.insertGameState(
-        _state(gameId: 'g1', ply: 0, movePlayed: 3),
+        _state(gameId: 'g1', ply: 0, movePlayed: 6 * 13 + 6),
       );
       await service.insertGameState(
-        _state(gameId: 'g1', ply: 1, movePlayed: 4),
+        _state(gameId: 'g1', ply: 1, movePlayed: 6 * 13 + 7),
       );
       await service.insertGameState(
-        _state(gameId: 'g1', ply: 2, movePlayed: 3),
+        _state(gameId: 'g1', ply: 2, movePlayed: 7 * 13 + 6),
       );
 
       await service.backfillStates('g1', 1, 3);
@@ -119,38 +118,41 @@ void main() {
   });
 
   test(
-    'fallback defaults to Stacker and persists user-facing values',
+    'fallback defaults to Chaotic at Go launch and round-trips random',
     () async {
-      expect(await service.loadFallback(), FallbackStrategy.pileFocus);
+      expect(await service.loadFallback(), FallbackStrategy.random);
 
-      for (final s in [
-        FallbackStrategy.random,
-        FallbackStrategy.ownPileAdjacent,
-        FallbackStrategy.pileFocus,
-        FallbackStrategy.greedyConnect,
-        FallbackStrategy.greedyConnectDefense,
-      ]) {
-        await service.saveFallback(s);
-        expect(await service.loadFallback(), s);
-      }
+      // Only `random` is user-facing at Go launch.
+      await service.saveFallback(FallbackStrategy.random);
+      expect(await service.loadFallback(), FallbackStrategy.random);
     },
   );
 
-  test('fallback maps hidden middleFocus value to Stacker on read', () async {
-    // middleFocus is still in the engine enum (benchmark-only) but isn't
-    // exposed in the slider; loadFallback should silently coerce it.
-    await service.saveFallback(FallbackStrategy.middleFocus);
-    expect(await service.loadFallback(), FallbackStrategy.pileFocus);
+  test('fallback coerces non-user-facing values to Chaotic on read', () async {
+    // Connect-Four-shaped personalities still exist in the engine (benchmark
+    // use) but aren't surfaced; loadFallback silently coerces them. The same
+    // coercion catches `middleFocus` and any legacy persisted string that
+    // doesn't map to a current user-facing value.
+    for (final s in [
+      FallbackStrategy.pileFocus,
+      FallbackStrategy.ownPileAdjacent,
+      FallbackStrategy.greedyConnect,
+      FallbackStrategy.greedyConnectDefense,
+      FallbackStrategy.middleFocus,
+    ]) {
+      await service.saveFallback(s);
+      expect(await service.loadFallback(), FallbackStrategy.random);
+    }
   });
 
-  test('fallback maps unknown / legacy stored value to Stacker', () async {
+  test('fallback maps unknown / legacy stored value to Chaotic', () async {
     // Simulate legacy data: write a string that no longer corresponds to any
     // enum value (like the removed `edgeFocus`).
     await service.db.insert('clone_config', {
       'key': 'fallback_personality',
       'value': 'edgeFocus',
     }, conflictAlgorithm: ConflictAlgorithm.replace);
-    expect(await service.loadFallback(), FallbackStrategy.pileFocus);
+    expect(await service.loadFallback(), FallbackStrategy.random);
   });
 
   test('deleteAllData clears states and games', () async {

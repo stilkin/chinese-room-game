@@ -67,7 +67,7 @@ class StartScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'connect four against\nyour learning clone',
+                            'go against\nyour learning clone',
                             textAlign: TextAlign.center,
                             style: textTheme.bodyMedium,
                           ),

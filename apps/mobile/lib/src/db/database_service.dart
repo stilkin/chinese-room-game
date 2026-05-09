@@ -8,7 +8,7 @@ import 'package:sqflite/sqflite.dart';
 import 'board_codec.dart';
 
 const _kDbName = 'pi_ying.db';
-const _kSchemaVersion = 3;
+const _kSchemaVersion = 4;
 const _kFallbackKey = 'fallback';
 
 const _kCreateGameStatesV3 = '''
@@ -75,12 +75,16 @@ class DatabaseService {
           ''');
         },
         onUpgrade: (db, oldVersion, newVersion) async {
-          // v1 → v2 was schema-incompatible (per-row perspective → winner-POV).
-          // v2 → v3 is also schema-incompatible (bit-hash column → quantized
-          // image column; bit-hash data isn't comparable under L1). Either
-          // upgrade is destructive: drop game_states, clear games, leave
-          // clone_config alone. Indices are recreated.
-          if (oldVersion < 3) {
+          // Every prior migration was schema- or data-incompatible:
+          // v1→v2 changed perspective convention (per-row → winner-POV).
+          // v2→v3 swapped bit-hash for quantized images.
+          // v3→v4 swaps the active game from Connect Four (6×7 boards,
+          // 42-byte diffused images) to Go (13×13, 169-byte images); the
+          // column shapes match but the byte sizes don't and the games
+          // aren't strategically comparable. All three upgrades are
+          // destructive: drop game_states, clear games, leave clone_config
+          // alone. Indices are recreated.
+          if (oldVersion < 4) {
             await db.execute('DROP TABLE IF EXISTS game_states');
             await db.execute(_kCreateGameStatesV3);
             await db.execute(
@@ -286,18 +290,14 @@ class DatabaseService {
     );
   }
 
-  /// User-facing fallback strategies (the slider exposes exactly these). Any
-  /// persisted value not in this set — including legacy `edgeFocus` (now
-  /// removed) and `middleFocus` (still in the engine for benchmark use only)
-  /// — is silently mapped to the default.
-  static const _kUserFacingFallbacks = {
-    FallbackStrategy.random,
-    FallbackStrategy.ownPileAdjacent,
-    FallbackStrategy.pileFocus,
-    FallbackStrategy.greedyConnect,
-    FallbackStrategy.greedyConnectDefense,
-  };
-  static const _kDefaultFallback = FallbackStrategy.pileFocus;
+  /// User-facing fallback strategies for Go's launch. The Connect-Four-shaped
+  /// personalities (`pileFocus`, `ownPileAdjacent`, `greedyConnect`,
+  /// `greedyConnectDefense`) live on in the engine for benchmark use but are
+  /// no longer surfaced via the slider — Go-specific personalities are the
+  /// subject of a follow-up change. Any persisted value not in this set is
+  /// silently mapped to the default.
+  static const _kUserFacingFallbacks = {FallbackStrategy.random};
+  static const _kDefaultFallback = FallbackStrategy.random;
 
   Future<FallbackStrategy> loadFallback() async {
     final rows = await db.query(

@@ -12,35 +12,20 @@ class _PersonalityLevel {
   const _PersonalityLevel(this.strategy, this.name, this.blurb);
 }
 
+// Single-entry roster for the Go launch. The Connect-Four-shaped personalities
+// (Builder, Stacker, Connector, Sentinel) survive in the engine package for
+// benchmark use but aren't surfaced on the slider — Go-specific personalities
+// arrive in a follow-up change. The slider widget is replaced by a static
+// label below until there are enough entries to make a slider meaningful.
 const List<_PersonalityLevel> _kSliderLevels = [
   _PersonalityLevel(
     FallbackStrategy.random,
     'Chaotic',
-    'plays anywhere. no plan.',
-  ),
-  _PersonalityLevel(
-    FallbackStrategy.ownPileAdjacent,
-    'Builder',
-    'builds next to its own pieces.',
-  ),
-  _PersonalityLevel(
-    FallbackStrategy.pileFocus,
-    'Stacker',
-    'stacks the tallest pile.',
-  ),
-  _PersonalityLevel(
-    FallbackStrategy.greedyConnect,
-    'Connector',
-    'plays for longer chains.',
-  ),
-  _PersonalityLevel(
-    FallbackStrategy.greedyConnectDefense,
-    'Sentinel',
-    'plays for chains. blocks losses.',
+    'plays anywhere legal.',
   ),
 ];
 
-const int _kDefaultSliderIndex = 2; // Stacker
+const int _kDefaultSliderIndex = 0;
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -105,35 +90,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 textAlign: TextAlign.center,
               ),
             ),
-            const SizedBox(height: 16),
-            SliderTheme(
-              data: SliderThemeData(
-                activeTrackColor: PiYingTheme.yellow,
-                inactiveTrackColor: PiYingTheme.outline,
-                thumbColor: PiYingTheme.yellow,
-                overlayColor: PiYingTheme.yellow.withValues(alpha: 0.18),
-                activeTickMarkColor: PiYingTheme.bg,
-                inactiveTickMarkColor: PiYingTheme.onSurfaceMuted,
-                trackHeight: 6,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 22),
-                valueIndicatorColor: PiYingTheme.yellow,
-                valueIndicatorTextStyle: theme.textTheme.labelSmall,
-                showValueIndicator: ShowValueIndicator.never,
-              ),
-              child: Slider(
-                value: _position.toDouble(),
-                min: 0,
-                max: (_kSliderLevels.length - 1).toDouble(),
-                divisions: _kSliderLevels.length - 1,
-                label: level.name,
-                onChanged: (v) {
-                  setState(() => _position = v.round());
-                },
-                onChangeEnd: (v) {
-                  final idx = v.round();
-                  notifier.setFallback(_kSliderLevels[idx].strategy);
-                },
+            const SizedBox(height: 32),
+            // Single personality at launch — slider is restored when a Go
+            // personality ladder lands.
+            Center(
+              child: Text(
+                'more personalities arrive in a future update.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: PiYingTheme.onSurfaceMuted,
+                ),
+                textAlign: TextAlign.center,
               ),
             ),
             const Divider(height: 48),
