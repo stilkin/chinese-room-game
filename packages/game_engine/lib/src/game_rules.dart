@@ -26,4 +26,13 @@ abstract class GameRules {
 
   /// Game-specific scorer used by `InfluenceOverlayStrategy`.
   MoveScorer get moveScorer;
+
+  /// Hard ceiling on L1 distance for a candidate to be considered "similar
+  /// enough." Candidates with `distance > maxCandidateL1Distance` are
+  /// dropped during retrieval — even if the prefilter widened to find them.
+  /// Without this ceiling the brain would silently learn from far-away
+  /// states whenever the database is sparse, inverting the "fall back when
+  /// I have no relevant data" intent. Per-game because diffused-image
+  /// magnitudes scale with piece values and board size.
+  int get maxCandidateL1Distance;
 }

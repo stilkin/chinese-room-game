@@ -174,8 +174,12 @@ class CloneBrain {
     );
 
     final weighted = <WeightedCandidate>[];
+    final maxDist = rules.maxCandidateL1Distance;
     var kept = 0;
     for (final r in results) {
+      // Results are sorted ascending by distance, so once we cross the
+      // ceiling every remaining candidate is too far away.
+      if (r.distance > maxDist) break;
       if (r.state.outcome != q.requiredOutcome) continue;
       if (kept >= _kNearestPerQuery) break;
       final movesToEnd = r.state.movesToEnd;

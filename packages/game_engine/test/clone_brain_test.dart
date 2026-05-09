@@ -259,4 +259,54 @@ void main() {
       expect(s.move, c.move);
     });
   });
+
+  group('candidate distance ceiling', () {
+    test('zero ceiling rejects all non-exact candidates', () {
+      // Use a rules wrapper with the ceiling pinned to 0. Anything that
+      // isn't a byte-identical diffused image gets dropped, so even with a
+      // populated log the brain must fall back.
+      final tightRules = _ZeroCeilingConnectFourRules();
+      final brain = CloneBrain(
+        rules: tightRules,
+        log: GameLog(),
+        fallback: FallbackStrategy.middleFocus,
+      );
+
+      var board = Board(tightRules.rows, tightRules.cols);
+      final moves = [3, 4, 3, 4, 3, 4, 3];
+      for (var i = 0; i < moves.length; i++) {
+        final side = i.isEven ? 1 : -1;
+        board = tightRules.applyMove(board, moves[i], side);
+        brain.log.addState(
+          brain.createState(
+            board: board,
+            movePlayed: moves[i],
+            ply: i,
+            gameId: 'g1',
+          ),
+        );
+      }
+      brain.log.backfillGame('g1', 1, moves.length);
+
+      // Query a position with the same ply as some stored state (so the
+      // prefilter passes it through) but a shape no stored state actually
+      // has — pieces at the corners. With ceiling=0, no candidate has L1=0
+      // to this query, so all are dropped and the brain falls back.
+      final query = Board(tightRules.rows, tightRules.cols);
+      query.set(5, 0, 1);
+      query.set(5, 6, -1);
+      final decision = brain.selectMove(query, 1);
+
+      expect(decision.usedFallback, true);
+      expect(decision.candidatesFound, 0);
+    });
+  });
+}
+
+/// ConnectFour rules with the candidate distance ceiling pinned to 0 — used
+/// to verify the ceiling filter in `clone_brain` rejects non-identical
+/// candidates regardless of how dense the log is.
+class _ZeroCeilingConnectFourRules extends ConnectFourRules {
+  @override
+  int get maxCandidateL1Distance => 0;
 }

@@ -150,6 +150,17 @@ class ConnectFourRules extends GameRules {
 
   @override
   MoveScorer get moveScorer => const ConnectFourMoveScorer();
+
+  /// 6×7 = 42 cells. After two diffusion steps with attenuation 0.5, an
+  /// isolated piece spreads to ~9 cells with quantized magnitudes ≤ 2; a
+  /// "1 piece different" board produces an L1 difference of roughly
+  /// 8–15 once you account for overlap. A "vaguely similar" board lands
+  /// in 30–50, "different game phase" 60+. Setting the ceiling at 60
+  /// keeps clearly-similar candidates and discards the noisy long tail
+  /// the prefilter scrapes together when the DB is sparse. Tunable via
+  /// the self-play benchmark; see `bin/self_play_benchmark.dart`.
+  @override
+  int get maxCandidateL1Distance => 60;
 }
 
 /// Accept candidates whose ply differs from the query's by at most `window`.
