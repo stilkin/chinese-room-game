@@ -8,7 +8,7 @@ import 'package:sqflite/sqflite.dart';
 import 'board_codec.dart';
 
 const _kDbName = 'pi_ying.db';
-const _kSchemaVersion = 4;
+const _kSchemaVersion = 5;
 const _kFallbackKey = 'fallback';
 
 const _kCreateGameStatesV3 = '''
@@ -78,13 +78,14 @@ class DatabaseService {
           // Every prior migration was schema- or data-incompatible:
           // v1→v2 changed perspective convention (per-row → winner-POV).
           // v2→v3 swapped bit-hash for quantized images.
-          // v3→v4 swaps the active game from Connect Four (6×7 boards,
-          // 42-byte diffused images) to Go (13×13, 169-byte images); the
-          // column shapes match but the byte sizes don't and the games
-          // aren't strategically comparable. All three upgrades are
-          // destructive: drop game_states, clear games, leave clone_config
-          // alone. Indices are recreated.
-          if (oldVersion < 4) {
+          // v3→v4 swapped the active game from Connect Four (6×7 boards) to
+          // Go (13×13); column shapes matched but byte sizes didn't.
+          // v4→v5 is a rebrand wipe (Pi-Ying / 皮影 identity) — column
+          // shapes are unchanged, but pre-rebrand debug data isn't worth
+          // carrying forward. All upgrades are destructive: drop
+          // game_states, clear games, leave clone_config alone. Indices
+          // are recreated.
+          if (oldVersion < 5) {
             await db.execute('DROP TABLE IF EXISTS game_states');
             await db.execute(_kCreateGameStatesV3);
             await db.execute(

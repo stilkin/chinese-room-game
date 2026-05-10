@@ -1,53 +1,51 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-/// Retro-76 leaning visual identity. Near-black background, three high-contrast
-/// primaries (red, yellow, blue), warm-white text. Multi-color is part of the
-/// brand; the palette is intentionally bigger than a typical dark Material
-/// theme.
+/// Moonlit-goban identity. Warm-dark wood backgrounds, ivory cream type and
+/// stones, a single cinnabar-red accent. Lean into Go's visual culture
+/// (wood + ink + sparing seal-red) without crossing into "ornamental Asian"
+/// cosplay. The 皮影 (shadow play) lore is a quiet earned moment, not a
+/// motif plastered everywhere.
 ///
-/// The in-game piece colors (player red, clone yellow) are part of the same
-/// palette as the UI accent (blue), so the board feels of-a-piece with the
-/// rest of the app — and we never put the same color on two semantically
-/// different things.
+/// Single-family typography (Klee One) — contemporary Japanese-influenced
+/// face with native CJK glyphs, so 皮影 renders inline alongside Latin
+/// without falling back to a system font. Two weights: 400 body, 600 titles.
 class PiYingTheme {
-  // Near-black background — slightly tinted to feel warm rather than clinical.
-  // VHS-tape-cassette dark, not "OS dark mode."
-  static const Color bg = Color(0xFF12121A);
-  static const Color surface = Color(0xFF1E1E28); // panel / card
-  static const Color surfaceLow = Color(0xFF0A0A0E); // sunken / under-board
-  static const Color outline = Color(0xFF4A4A55); // visible borders, readable
+  // Backgrounds and surfaces — warm dark palette. Not pure black; the warmth
+  // is what makes "moonlit goban" read instead of "generic dark mode".
+  static const Color bg = Color(0xFF1A1612);
+  static const Color surface = Color(0xFF2A2218);
+  static const Color surfaceLow = Color(0xFF100C08);
+  static const Color outline = Color(0xFF6A5840);
 
-  // Three primaries.
-  static const Color red = Color(0xFFFF3D2E); // player chip, urgent
-  static const Color yellow = Color(0xFFFFC700); // clone chip, brand accent
-  static const Color blue = Color(
-    0xFF2A7FE8,
-  ); // ui accent, buttons, "your turn"
+  // Board surface — aged kaya wood, dark amber. Reads as warm wood against
+  // the slightly darker `bg` so the board sits forward visually.
+  static const Color boardPanel = Color(0xFF4A3520);
 
-  // Aliases used by older code paths so we don't have to refactor every call
-  // site that referenced amber / amberDeep.
-  static const Color amber = yellow;
-  static const Color amberDeep = yellow;
-  static const Color cyan = blue;
+  // Lines, hoshi, and primary text share the same cream tone. Visual rhyme:
+  // the player's stones use this colour too, so the player's pieces feel
+  // continuous with the typography.
+  static const Color lineColor = Color(0xFFD4B886);
 
-  // Text. Warm white instead of pure white for the slightly-VHS feel; muted
-  // is intentionally still readable on bg (passes WCAG-ish for 18px+ text).
-  static const Color onSurface = Color(0xFFF5F0E0);
-  static const Color onSurfaceMuted = Color(0xFFB5B0A8);
+  // Type colours.
+  static const Color onSurface = Color(0xFFEAD8B5);
+  static const Color onSurfaceMuted = Color(0xFF9A8B6F);
 
-  static const String _headlineFamily = 'PressStart2P';
-  static const String _bodyFamily = 'VT323';
+  // The single accent. Used for last-move ring, win callout, destructive UI.
+  // Anywhere this colour appears, it should *mean* something — using it for
+  // mere decoration dilutes the language.
+  static const Color cinnabar = Color(0xFFC13C2B);
 
   static ThemeData build() {
     final colorScheme = const ColorScheme.dark(
       brightness: Brightness.dark,
-      primary: blue,
+      primary: cinnabar,
       onPrimary: onSurface,
-      secondary: yellow,
+      secondary: lineColor,
       onSecondary: bg,
-      tertiary: red,
-      onTertiary: onSurface,
-      error: red,
+      tertiary: lineColor,
+      onTertiary: bg,
+      error: cinnabar,
       onError: onSurface,
       surface: surface,
       onSurface: onSurface,
@@ -61,96 +59,96 @@ class PiYingTheme {
     return base.copyWith(
       scaffoldBackgroundColor: bg,
       textTheme: TextTheme(
-        // Headlines / titles: Press Start 2P. Used sparingly because at large
-        // sizes the pixel letters take a lot of horizontal room.
-        displayLarge: _headline(28, color: yellow, letterSpacing: 1.5),
-        displayMedium: _headline(22, color: yellow, letterSpacing: 1.5),
-        displaySmall: _headline(18, color: yellow, letterSpacing: 1.0),
-        headlineLarge: _headline(20, color: yellow, letterSpacing: 1.5),
-        headlineMedium: _headline(16, color: yellow, letterSpacing: 1.5),
-        headlineSmall: _headline(14, color: yellow, letterSpacing: 1.0),
-        titleLarge: _headline(14, color: onSurface, letterSpacing: 1.0),
-        titleMedium: _headline(12, color: onSurface, letterSpacing: 1.0),
-        titleSmall: _headline(10, color: onSurface, letterSpacing: 1.5),
-        // Body text: VT323. Larger sizes than usual because the font is on
-        // the small side at typical body sizes.
-        bodyLarge: _body(22, color: onSurface),
-        bodyMedium: _body(20, color: onSurface),
-        bodySmall: _body(18, color: onSurfaceMuted),
-        labelLarge: _headline(12, color: bg, letterSpacing: 1.5),
-        labelMedium: _headline(11, color: bg, letterSpacing: 1.0),
-        labelSmall: _headline(10, color: bg, letterSpacing: 1.0),
+        // Display / headline / title — all set in Klee One semibold (600),
+        // the title weight. Sizes mirror the prior scale's logical structure
+        // but tuned for a handwritten serif rather than an 8-bit pixel grid.
+        displayLarge: _title(32, color: onSurface, letterSpacing: 1.5),
+        displayMedium: _title(26, color: onSurface, letterSpacing: 1.2),
+        displaySmall: _title(20, color: onSurface, letterSpacing: 1.0),
+        headlineLarge: _title(22, color: onSurface, letterSpacing: 1.0),
+        headlineMedium: _title(18, color: onSurface, letterSpacing: 0.8),
+        headlineSmall: _title(16, color: onSurface, letterSpacing: 0.5),
+        titleLarge: _title(16, color: onSurface, letterSpacing: 1.0),
+        titleMedium: _title(14, color: onSurface, letterSpacing: 1.0),
+        titleSmall: _title(13, color: onSurfaceMuted, letterSpacing: 1.5),
+        // Body — Klee One regular (400).
+        bodyLarge: _body(16, color: onSurface),
+        bodyMedium: _body(14, color: onSurface),
+        bodySmall: _body(12, color: onSurfaceMuted),
+        labelLarge: _title(14, color: onSurface, letterSpacing: 1.5),
+        labelMedium: _title(12, color: onSurface, letterSpacing: 1.0),
+        labelSmall: _title(11, color: onSurfaceMuted, letterSpacing: 1.0),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: yellow,
-          foregroundColor: bg,
+          backgroundColor: cinnabar,
+          foregroundColor: onSurface,
           shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(2)),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-          textStyle: _headline(13, color: bg, letterSpacing: 1.5),
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+          textStyle: _title(14, color: onSurface, letterSpacing: 1.5),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: yellow,
-          side: const BorderSide(color: yellow, width: 2),
+          foregroundColor: onSurface,
+          side: const BorderSide(color: outline, width: 1),
           shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(2)),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          textStyle: _headline(11, color: yellow, letterSpacing: 1.5),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          textStyle: _title(13, color: onSurface, letterSpacing: 1.5),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: yellow,
-          textStyle: _headline(10, color: yellow),
+          foregroundColor: onSurface,
+          textStyle: _title(12, color: onSurface),
         ),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: bg,
-        foregroundColor: yellow,
+        foregroundColor: onSurface,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: _headline(16, color: yellow, letterSpacing: 2),
+        titleTextStyle: _title(16, color: onSurface, letterSpacing: 2),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: surface,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(2)),
-          side: BorderSide(color: yellow, width: 2),
+          side: BorderSide(color: outline, width: 1),
         ),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: surface,
-        contentTextStyle: _body(20, color: onSurface),
+        contentTextStyle: _body(14, color: onSurface),
         behavior: SnackBarBehavior.floating,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(2)),
-          side: BorderSide(color: outline, width: 2),
+          side: BorderSide(color: outline, width: 1),
         ),
       ),
     );
   }
 
-  static TextStyle _headline(
+  static TextStyle _title(
     double size, {
     Color? color,
     double letterSpacing = 0,
-  }) => TextStyle(
-    fontFamily: _headlineFamily,
+  }) => GoogleFonts.kleeOne(
     fontSize: size,
+    fontWeight: FontWeight.w600,
     color: color,
     letterSpacing: letterSpacing,
     height: 1.4,
   );
 
-  static TextStyle _body(double size, {Color? color}) => TextStyle(
-    fontFamily: _bodyFamily,
+  static TextStyle _body(double size, {Color? color}) => GoogleFonts.kleeOne(
     fontSize: size,
+    fontWeight: FontWeight.w400,
     color: color,
-    height: 1.2,
+    height: 1.4,
   );
 }

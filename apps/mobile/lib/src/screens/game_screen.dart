@@ -124,7 +124,9 @@ class _GameScreenState extends State<GameScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: PiYingTheme.red),
+            style: FilledButton.styleFrom(
+              backgroundColor: PiYingTheme.cinnabar,
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Resign'),
           ),
@@ -172,10 +174,10 @@ class _StatusBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final (label, color) = outcome != null
-        ? ('GAME OVER', PiYingTheme.amber)
+        ? ('GAME OVER', PiYingTheme.cinnabar)
         : isCloneThinking
         ? ('CLONE THINKING…', PiYingTheme.onSurfaceMuted)
-        : ('YOUR TURN', PiYingTheme.cyan);
+        : ('YOUR TURN', PiYingTheme.onSurface);
     return Center(
       child: Text(
         label,
@@ -211,8 +213,8 @@ class _ResignButton extends StatelessWidget {
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: PiYingTheme.red, width: 2),
-        foregroundColor: PiYingTheme.red,
+        side: const BorderSide(color: PiYingTheme.cinnabar, width: 2),
+        foregroundColor: PiYingTheme.cinnabar,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       ),
       child: const Text('RESIGN', style: TextStyle(letterSpacing: 2)),

@@ -43,7 +43,7 @@ class StartScreen extends StatelessWidget {
                                   Navigator.pushNamed(context, '/settings'),
                               icon: const Icon(
                                 Icons.settings,
-                                color: PiYingTheme.amber,
+                                color: PiYingTheme.onSurface,
                               ),
                               tooltip: 'Settings',
                             ),
@@ -65,11 +65,23 @@ class StartScreen extends StatelessWidget {
                               letterSpacing: 4,
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 4),
+                          // 皮影 — pí yǐng — Chinese shadow theatre. The clone
+                          // is your shadow, learning your moves and playing
+                          // them back. Surfaced here as the brand mark; a
+                          // longer explanation lives in Settings → About.
                           Text(
-                            'go against\nyour learning clone',
+                            '皮影',
                             textAlign: TextAlign.center,
-                            style: textTheme.bodyMedium,
+                            style: textTheme.displaySmall,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'shadow play of go',
+                            textAlign: TextAlign.center,
+                            style: textTheme.bodyMedium?.copyWith(
+                              color: PiYingTheme.onSurfaceMuted,
+                            ),
                           ),
                           const SizedBox(height: 32),
                           _StatsPanel(
@@ -198,7 +210,7 @@ class _StatsPanel extends StatelessWidget {
               Text(
                 '${cloneWinPct.toStringAsFixed(0)}%',
                 style: textTheme.headlineLarge?.copyWith(
-                  color: PiYingTheme.amber,
+                  color: PiYingTheme.lineColor,
                 ),
               ),
               const SizedBox(width: 8),

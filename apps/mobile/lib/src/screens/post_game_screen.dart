@@ -12,8 +12,8 @@ class PostGameScreen extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final outcome = notifier.outcome;
     final (label, color) = switch (outcome) {
-      1 => ('YOU WIN', PiYingTheme.red),
-      -1 => ('CLONE WINS', PiYingTheme.yellow),
+      1 => ('YOU WIN', PiYingTheme.cinnabar),
+      -1 => ('CLONE WINS', PiYingTheme.onSurfaceMuted),
       0 => ('DRAW', PiYingTheme.onSurface),
       _ => ('', PiYingTheme.onSurface),
     };
@@ -93,7 +93,7 @@ class _FinalThoughtBubble extends StatelessWidget {
           child: Text(
             "CLONE'S FINAL THOUGHT",
             style: textTheme.titleSmall?.copyWith(
-              color: PiYingTheme.blue,
+              color: PiYingTheme.lineColor,
               letterSpacing: 1.5,
             ),
           ),

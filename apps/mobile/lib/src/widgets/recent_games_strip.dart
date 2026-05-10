@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
-/// Horizontal pixel-strip rendering one cell per past game outcome:
-///   +1 (player won)  → red    (matching the player chip color)
-///   -1 (clone won)   → amber  (matching the clone chip color)
-///    0 (draw)        → muted grey
+/// Horizontal strip rendering one cell per past game outcome:
+///   +1 (player won)  → cinnabar (the brand accent — your wins should pop)
+///   -1 (clone won)   → muted cream (loss reads quieter than win)
+///    0 (draw)        → outline grey
 ///
 /// Layout: cells fill the strip's width left-to-right, oldest on the left.
 /// More games → narrower cells. With ≤ ~120 games on a phone the cells are
@@ -56,8 +56,8 @@ class _StripPainter extends CustomPainter {
   }
 
   Color _colorFor(int outcome) {
-    if (outcome == 1) return PiYingTheme.red;
-    if (outcome == -1) return PiYingTheme.amberDeep;
+    if (outcome == 1) return PiYingTheme.cinnabar;
+    if (outcome == -1) return PiYingTheme.onSurfaceMuted;
     return PiYingTheme.outline;
   }
 

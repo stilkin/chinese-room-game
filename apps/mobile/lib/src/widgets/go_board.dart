@@ -3,8 +3,8 @@ import 'package:game_engine/game_engine.dart';
 
 import '../theme.dart';
 
-const _kBoardBackground = PiYingTheme.surface;
-const _kLineColor = PiYingTheme.yellow;
+const _kBoardBackground = PiYingTheme.boardPanel;
+const _kLineColor = PiYingTheme.lineColor;
 // Player and clone stones approximate Go's white/black convention. The board
 // is dark, so the "black" stone is rendered as a near-black with a lighter
 // outline ring to keep it readable against the surface.
@@ -164,7 +164,7 @@ class _GoBoardPainter extends CustomPainter {
         ),
         stoneRadius * 0.55,
         Paint()
-          ..color = PiYingTheme.blue
+          ..color = PiYingTheme.cinnabar
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2,
       );

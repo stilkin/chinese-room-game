@@ -44,6 +44,24 @@ class SettingsScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            // Quiet earned-discovery moment for the curious. Lives in Settings
+            // rather than the main UI so the brand doesn't lecture; users who
+            // want to know what 皮影 means find it here.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: Text('About', style: theme.textTheme.titleSmall),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                'Pi-Ying — 皮影 (pí yǐng), Chinese shadow theatre, where a '
+                'puppeteer animates flat figures behind a backlit screen. '
+                'Your clone is your shadow, learning your moves and playing '
+                'them back at you.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+            const Divider(height: 32),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
               child: Text(
@@ -88,7 +106,9 @@ class SettingsScreen extends StatelessWidget {
             ),
             const Divider(height: 48),
             FilledButton.tonal(
-              style: FilledButton.styleFrom(foregroundColor: PiYingTheme.red),
+              style: FilledButton.styleFrom(
+                foregroundColor: PiYingTheme.cinnabar,
+              ),
               onPressed: () => _confirmDelete(context, notifier),
               child: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
@@ -118,7 +138,9 @@ class SettingsScreen extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: PiYingTheme.red),
+            style: FilledButton.styleFrom(
+              backgroundColor: PiYingTheme.cinnabar,
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Delete'),
           ),
