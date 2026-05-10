@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:game_engine/game_engine.dart';
 
 import '../db/database_service.dart';
@@ -152,7 +153,14 @@ class GameNotifier extends ChangeNotifier {
   Future<void> playerMove(int move) async {
     if (_outcome != null || _currentSide != 1 || _isCloneThinking) return;
     final legal = rules.legalMoves(_displayBoard, side: 1, log: log);
-    if (!legal.contains(move)) return;
+    if (!legal.contains(move)) {
+      // Tap registered but the move is illegal (occupied, suicide, ko).
+      // A short selection click confirms the tap landed on something
+      // tappable without misleading the user into thinking a move played.
+      HapticFeedback.selectionClick();
+      return;
+    }
+    HapticFeedback.lightImpact();
 
     // Synchronous state mutation: anything below sees turn already flipped.
     final state = _applySync(move, 1);
@@ -200,7 +208,26 @@ class GameNotifier extends ChangeNotifier {
   }
 
   GameState _applySync(int move, int side) {
+    // Capture detection: count opposing stones before and after applyMove.
+    // Any decrement is captured stones — fire a medium haptic so the user
+    // viscerally registers the board event regardless of which side acted.
+    final opponent = -side;
+    var beforeOpponent = 0;
+    for (var r = 0; r < _displayBoard.rows; r++) {
+      for (var c = 0; c < _displayBoard.cols; c++) {
+        if (_displayBoard.get(r, c) == opponent) beforeOpponent++;
+      }
+    }
     _displayBoard = rules.applyMove(_displayBoard, move, side);
+    var afterOpponent = 0;
+    for (var r = 0; r < _displayBoard.rows; r++) {
+      for (var c = 0; c < _displayBoard.cols; c++) {
+        if (_displayBoard.get(r, c) == opponent) afterOpponent++;
+      }
+    }
+    if (afterOpponent < beforeOpponent) {
+      HapticFeedback.mediumImpact();
+    }
     final r = move ~/ rules.cols;
     final c = move % rules.cols;
     if (r >= 0 && r < rules.rows) {
@@ -252,6 +279,7 @@ class GameNotifier extends ChangeNotifier {
   /// from them would teach false patterns.
   Future<void> resign() async {
     if (_outcome != null || !_hasOngoingGame) return;
+    HapticFeedback.mediumImpact();
     _isCloneThinking = false;
     if (_gameId.isNotEmpty) {
       await db.deleteStatesForGame(_gameId);

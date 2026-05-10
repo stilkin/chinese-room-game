@@ -49,6 +49,10 @@ void main() {
   late _Fixture f;
 
   setUpAll(() {
+    // Initialize the Flutter test binding so platform channels (used by
+    // `HapticFeedback`) have a mock handler in place; without this the
+    // notifier's haptic calls throw MissingPluginException.
+    TestWidgetsFlutterBinding.ensureInitialized();
     sqfliteFfiInit();
   });
 
