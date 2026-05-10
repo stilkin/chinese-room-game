@@ -320,6 +320,65 @@ void main() {
     });
   });
 
+  group('GoRules.isOwnEnclosedTerritory', () {
+    final rules = GoRules(size: 5);
+
+    test('empty board: nothing is enclosed yet', () {
+      final board = Board(5, 5);
+      // Every cell is empty and the only "boundary" of the flood-fill is the
+      // board edge — neither side touches it, so neither is enclosed.
+      expect(rules.isOwnEnclosedTerritory(board, 2 * 5 + 2, 1), isFalse);
+    });
+
+    test('cell surrounded only by white stones is enclosed for white', () {
+      // . W . . .
+      // W . W . .
+      // . W . . .
+      final board = Board.from([
+        [0, 1, 0, 0, 0],
+        [1, 0, 1, 0, 0],
+        [0, 1, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+      ]);
+      expect(rules.isOwnEnclosedTerritory(board, 1 * 5 + 1, 1), isTrue);
+    });
+
+    test('region touching both colours is dame, not enclosed', () {
+      // W W . . .
+      // W . . . .
+      // . . . B B
+      // . . . . B
+      // The empty region in the middle bridges to both white (top-left) and
+      // black (bottom-right) → dame.
+      final board = Board.from([
+        [1, 1, 0, 0, 0],
+        [1, 0, 0, 0, 0],
+        [0, 0, 0, -1, -1],
+        [0, 0, 0, 0, -1],
+        [0, 0, 0, 0, 0],
+      ]);
+      expect(rules.isOwnEnclosedTerritory(board, 2 * 5 + 2, 1), isFalse);
+    });
+
+    test('pass move is never enclosed territory', () {
+      final board = Board(5, 5);
+      expect(rules.isOwnEnclosedTerritory(board, rules.passMove, 1), isFalse);
+    });
+
+    test('occupied cell is never enclosed territory', () {
+      final board = Board.from([
+        [0, 1, 0, 0, 0],
+        [1, 1, 1, 0, 0],
+        [0, 1, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+      ]);
+      // (1,1) is white. Asking about a stone-cell never returns true.
+      expect(rules.isOwnEnclosedTerritory(board, 1 * 5 + 1, 1), isFalse);
+    });
+  });
+
   group('GoDiffusionKernel', () {
     const kernel = GoDiffusionKernel();
 

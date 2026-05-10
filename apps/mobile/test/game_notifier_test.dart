@@ -33,8 +33,11 @@ class _Fixture {
 // runs further awaits (backfill + invert) — we must wait for `isCloneThinking`
 // to flip back to false before checking other state.
 Future<void> _settle(GameNotifier notifier) async {
+  // Wall-clock polling, not microtask polling. The notifier's `_cloneTurn`
+  // includes a 250ms visible "thinking" delay; pure-microtask waits never
+  // advance the timer queue, so we have to actually sleep here.
   for (var i = 0; i < 200; i++) {
-    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(const Duration(milliseconds: 5));
     if (notifier.isCloneThinking) continue;
     if (notifier.outcome != null) return;
     if (notifier.currentSide == 1) return;

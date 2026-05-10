@@ -1,4 +1,6 @@
 import 'dart:math';
+import 'dart:typed_data';
+
 import 'package:test/test.dart';
 import 'package:game_engine/game_engine.dart';
 
@@ -437,6 +439,80 @@ void main() {
       board.set(0, 0, 1);
       final decision = brain.selectMove(board, 1);
       expect(decision.move == 0 * 13 + 1 || decision.move == 1 * 13 + 0, true);
+    });
+  });
+
+  group('Go opponent-passed self-fill override', () {
+    // Build a 5×5 board where every empty interior cell is bounded only by
+    // white stones — pure own-enclosed territory. With the player just having
+    // passed, the brain SHALL override the fallback's chosen move to passMove.
+    Board enclosedBoard() => Board.from([
+      [1, 1, 1, 1, 1],
+      [1, 0, 0, 0, 1],
+      [1, 0, 1, 0, 1],
+      [1, 0, 0, 0, 1],
+      [1, 1, 1, 1, 1],
+    ]);
+
+    GameState passState(GoRules rules, int ply) => GameState(
+      board: Board(rules.size, rules.size),
+      diffusedImage: Int8List(rules.size * rules.size),
+      movePlayed: rules.passMove,
+      ply: ply,
+      gameId: 'g',
+      totalMaterial: 0,
+      materialBalance: 0,
+    );
+
+    test('overrides Star-point fallback to pass when opponent just passed', () {
+      final rules = GoRules(size: 5);
+      final log = GameLog()..addState(passState(rules, 0));
+      final brain = CloneBrain(
+        rules: rules,
+        log: log,
+        fallback: FallbackStrategy.goStarPoints,
+        random: Random(42),
+      );
+      final decision = brain.selectMove(enclosedBoard(), 1);
+      expect(decision.move, rules.passMove);
+      expect(decision.narration, contains('nothing left'));
+    });
+
+    test('does NOT override when opponent has not passed', () {
+      // Same enclosed board but no pass state in the log → bot picks a real
+      // placement, even though it lands in own-enclosed territory.
+      final rules = GoRules(size: 5);
+      final brain = CloneBrain(
+        rules: rules,
+        log: GameLog(),
+        fallback: FallbackStrategy.goStarPoints,
+        random: Random(42),
+      );
+      final decision = brain.selectMove(enclosedBoard(), 1);
+      expect(decision.move, isNot(rules.passMove));
+    });
+
+    test('does NOT override when chosen move borders enemy stones', () {
+      // Two friendly stones at top-left and one enemy stone inside what would
+      // otherwise be own-territory. The empty region touches the enemy → not
+      // enclosed → bot still plays.
+      final rules = GoRules(size: 5);
+      final log = GameLog()..addState(passState(rules, 0));
+      final brain = CloneBrain(
+        rules: rules,
+        log: log,
+        fallback: FallbackStrategy.goStarPoints,
+        random: Random(42),
+      );
+      final board = Board.from([
+        [1, 1, 1, 1, 1],
+        [1, 0, 0, 0, 1],
+        [1, 0, -1, 0, 1],
+        [1, 0, 0, 0, 1],
+        [1, 1, 1, 1, 1],
+      ]);
+      final decision = brain.selectMove(board, 1);
+      expect(decision.move, isNot(rules.passMove));
     });
   });
 

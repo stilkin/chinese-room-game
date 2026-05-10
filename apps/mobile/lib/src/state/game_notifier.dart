@@ -192,6 +192,12 @@ class GameNotifier extends ChangeNotifier {
   }
 
   Future<void> _cloneTurn() async {
+    // Visible "thinking" pause: without this, the bot's stone (and any
+    // captures it triggers) appears on the same frame as the player's move
+    // resolves, reading as a flicker rather than a turn. 250ms is the
+    // minimum-perceptible-pause for cause-and-effect in UI animation
+    // research; tunable.
+    await Future<void>.delayed(const Duration(milliseconds: 250));
     final decision = _brain.selectMove(_displayBoard, -1);
     _narration = decision.narration;
     final state = _applySync(decision.move, -1);

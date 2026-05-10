@@ -130,6 +130,47 @@ class GoRules extends GameRules {
   /// space is dame) but the trend is meaningful.
   ({int white, int black}) areaScore(Board board) => _areaScore(board);
 
+  /// True iff playing `move` for `side` would land in an empty region that
+  /// is bounded only by `side`-coloured stones (own enclosed territory or an
+  /// own-eye). Used by the brain layer as a sanity gate after the opponent
+  /// has just passed: if the only "good" move on the heatmap is to fill our
+  /// own territory, we'd rather pass too. Pass moves and occupied cells
+  /// always return false.
+  bool isOwnEnclosedTerritory(Board board, int move, int side) {
+    if (isPassMove(move)) return false;
+    final r = move ~/ size;
+    final c = move % size;
+    if (r < 0 || r >= size || c < 0 || c >= size) return false;
+    if (board.get(r, c) != 0) return false;
+    final visited = <int>{};
+    final stack = <(int, int)>[(r, c)];
+    var touchesEnemy = false;
+    var touchesOwn = false;
+    while (stack.isNotEmpty) {
+      final pos = stack.removeLast();
+      final cr = pos.$1;
+      final cc = pos.$2;
+      if (cr < 0 || cr >= size || cc < 0 || cc >= size) continue;
+      final v = board.get(cr, cc);
+      if (v == side) {
+        touchesOwn = true;
+        continue;
+      }
+      if (v == -side) {
+        touchesEnemy = true;
+        continue;
+      }
+      final key = cr * size + cc;
+      if (visited.contains(key)) continue;
+      visited.add(key);
+      stack.add((cr - 1, cc));
+      stack.add((cr + 1, cc));
+      stack.add((cr, cc - 1));
+      stack.add((cr, cc + 1));
+    }
+    return touchesOwn && !touchesEnemy;
+  }
+
   /// Flood-fill the same-colour group containing `(r, c)`. Returns the cells
   /// of the group (as flat indices `r * size + c`) and the count of distinct
   /// liberty intersections. The starting cell SHALL be non-empty.

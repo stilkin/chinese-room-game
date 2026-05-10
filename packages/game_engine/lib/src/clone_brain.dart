@@ -90,6 +90,20 @@ class CloneBrain {
       );
     }
 
+    // Pass should only enter the brain's selection set when the opponent just
+    // passed — that's the game-end signal where mirroring is correct.
+    // Otherwise a weak heatmap (small magnitudes from low-relevance
+    // candidates) would let the pass score (`GoMoveScorer.passScore = 0.01`)
+    // beat every legal placement, and the bot would pass turn after turn
+    // even with plenty of board to play on. Random fallback still picks from
+    // the full `legal` list (so the bot can occasionally pass when it has no
+    // data at all), but a brain with data will only consider passing when
+    // the opponent did. The same flag also gates the self-fill→pass override
+    // applied to the chosen move at every emit point below.
+    final inProgress = log.states.where((s) => s.outcome == null).toList();
+    final opponentJustPassed =
+        inProgress.isNotEmpty && rules.isPassMove(inProgress.last.movePlayed);
+
     // Filter out pass-state rows: their boards are byte-equal to the prior
     // state's board, so they teach nothing positionally and inflate the
     // candidate pool with duplicate signal at the cells the player previously
@@ -101,27 +115,25 @@ class CloneBrain {
             .where((s) => !rules.isPassMove(s.movePlayed))
             .toList();
     if (completed.isEmpty) {
-      return _fallbackDecision(legal, currentBoard, side);
+      return _maybePassOnEnclosed(
+        _fallbackDecision(legal, currentBoard, side),
+        currentBoard,
+        side,
+        opponentJustPassed,
+      );
     }
 
-    // Pass should only enter the brain's selection set when the opponent
-    // just passed — that's the game-end signal where mirroring is correct.
-    // Otherwise a weak heatmap (small magnitudes from low-relevance candidates)
-    // would let the pass score (`GoMoveScorer.passScore = 0.01`) beat every
-    // legal placement, and the bot would pass turn after turn even with
-    // plenty of board to play on. Surfaced on-device after the first
-    // playable Go build. Random fallback still picks from the full `legal`
-    // list (so the bot can occasionally pass when it has no data at all),
-    // but a brain with data will only consider passing when the opponent did.
-    final inProgress = log.states.where((s) => s.outcome == null).toList();
-    final opponentJustPassed =
-        inProgress.isNotEmpty && rules.isPassMove(inProgress.last.movePlayed);
     final brainLegal =
         opponentJustPassed
             ? legal
             : legal.where((m) => !rules.isPassMove(m)).toList();
     if (brainLegal.isEmpty) {
-      return _fallbackDecision(legal, currentBoard, side);
+      return _maybePassOnEnclosed(
+        _fallbackDecision(legal, currentBoard, side),
+        currentBoard,
+        side,
+        opponentJustPassed,
+      );
     }
 
     // Four queries: perspective × mirror. Q_A and Q_B target different
@@ -149,7 +161,12 @@ class CloneBrain {
     }
 
     if (all.isEmpty) {
-      return _fallbackDecision(legal, currentBoard, side);
+      return _maybePassOnEnclosed(
+        _fallbackDecision(legal, currentBoard, side),
+        currentBoard,
+        side,
+        opponentJustPassed,
+      );
     }
 
     final selected = rules.moveSelectionStrategy.selectMove(
@@ -158,7 +175,12 @@ class CloneBrain {
       currentBoard,
     );
     if (selected == null) {
-      return _fallbackDecision(legal, currentBoard, side);
+      return _maybePassOnEnclosed(
+        _fallbackDecision(legal, currentBoard, side),
+        currentBoard,
+        side,
+        opponentJustPassed,
+      );
     }
 
     // All-losing guard: rebuild the heatmap and check the chosen move's score.
@@ -171,19 +193,54 @@ class CloneBrain {
     final score = rules.moveScorer.scoreMove(selected, currentBoard, heatmap);
     if (score <= 0) {
       final move = _fallbackMove(legal, currentBoard, side);
-      return MoveDecision(
-        move: move,
-        narration: narrate(DecisionContext.allLosing),
-        usedFallback: true,
-        candidatesFound: totalResults,
+      return _maybePassOnEnclosed(
+        MoveDecision(
+          move: move,
+          narration: narrate(DecisionContext.allLosing),
+          usedFallback: true,
+          candidatesFound: totalResults,
+        ),
+        currentBoard,
+        side,
+        opponentJustPassed,
       );
     }
 
+    return _maybePassOnEnclosed(
+      MoveDecision(
+        move: selected,
+        narration: _buildNarration(all),
+        usedFallback: false,
+        candidatesFound: totalResults,
+      ),
+      currentBoard,
+      side,
+      opponentJustPassed,
+    );
+  }
+
+  /// If the opponent has just passed and the chosen move would land in a
+  /// region of the board enclosed only by our own stones (own territory,
+  /// own eyes), pass instead. The check is deliberately narrow: it never
+  /// fires unless the opponent has signalled the game is winding down, and
+  /// it never converts a capturing or invading move (those moves border
+  /// enemy stones). Replaces the narration to make the decision audible.
+  MoveDecision _maybePassOnEnclosed(
+    MoveDecision decision,
+    Board board,
+    int side,
+    bool opponentJustPassed,
+  ) {
+    if (!opponentJustPassed) return decision;
+    final go = rules;
+    if (go is! GoRules) return decision;
+    if (go.isPassMove(decision.move)) return decision;
+    if (!go.isOwnEnclosedTerritory(board, decision.move, side)) return decision;
     return MoveDecision(
-      move: selected,
-      narration: _buildNarration(all),
-      usedFallback: false,
-      candidatesFound: totalResults,
+      move: go.passMove,
+      narration: 'I have nothing left worth playing.',
+      usedFallback: decision.usedFallback,
+      candidatesFound: decision.candidatesFound,
     );
   }
 
