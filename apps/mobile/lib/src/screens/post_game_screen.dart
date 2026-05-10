@@ -18,6 +18,13 @@ class PostGameScreen extends StatelessWidget {
       _ => ('', PiYingTheme.onSurface),
     };
 
+    // Live area readout for territory games. Computed from the current board
+    // (which is preserved through `resign`), not from persisted columns —
+    // resigns leave `player_area` / `clone_area` NULL by design but the live
+    // board still reflects what was on the screen at end-of-game.
+    final area = notifier.currentAreaScore;
+    final showArea = area != null && (area.player + area.clone) > 0;
+
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -34,6 +41,17 @@ class PostGameScreen extends StatelessWidget {
                   letterSpacing: 4,
                 ),
               ),
+              if (showArea) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'AREA  ·  YOU ${area.player}  ·  CLONE ${area.clone}',
+                  textAlign: TextAlign.center,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: PiYingTheme.onSurfaceMuted,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               Text(
                 'game ${notifier.gamesPlayed}  ·  '

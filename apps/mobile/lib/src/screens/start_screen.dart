@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_scope.dart';
 import '../theme.dart';
-import '../widgets/recent_games_strip.dart';
+import '../widgets/area_history_strip.dart';
 
 class StartScreen extends StatelessWidget {
   const StartScreen({super.key});
@@ -86,10 +86,6 @@ class StartScreen extends StatelessWidget {
                             draws: notifier.draws,
                           ),
                           const SizedBox(height: 16),
-                          Text('LAST GAMES', style: textTheme.titleSmall),
-                          const SizedBox(height: 8),
-                          RecentGamesStrip(outcomes: notifier.recentOutcomes),
-                          const Spacer(),
                           if (notifier.hasOngoingGame) ...[
                             FilledButton(
                               onPressed: () => _onResume(context),
@@ -107,6 +103,15 @@ class StartScreen extends StatelessWidget {
                                   _onNewGame(context, confirm: false),
                               child: const Text('NEW GAME'),
                             ),
+                          // Spacer absorbs extra vertical room when the
+                          // history is short, pinning the strip to the
+                          // bottom; collapses to zero when the strip is tall
+                          // enough to fill (and slightly overflow into the
+                          // outer SingleChildScrollView).
+                          const Spacer(),
+                          Text('LAST GAMES', style: textTheme.titleSmall),
+                          const SizedBox(height: 8),
+                          AreaHistoryStrip(games: notifier.recentGames),
                           const SizedBox(height: 16),
                         ],
                       ),

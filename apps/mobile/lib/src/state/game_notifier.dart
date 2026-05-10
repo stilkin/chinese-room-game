@@ -23,7 +23,7 @@ class GameNotifier extends ChangeNotifier {
   int _playerWins = 0;
   int _cloneWins = 0;
   int _draws = 0;
-  List<int> _recentOutcomes = const [];
+  List<RecentGame> _recentGames = const [];
   FallbackStrategy _fallback;
   bool _hasOngoingGame = false;
   // Latest move's intersection — used by the UI to highlight the most recent
@@ -51,7 +51,7 @@ class GameNotifier extends ChangeNotifier {
   int get playerWins => _playerWins;
   int get cloneWins => _cloneWins;
   int get draws => _draws;
-  List<int> get recentOutcomes => _recentOutcomes;
+  List<RecentGame> get recentGames => _recentGames;
   bool get isCloneThinking => _isCloneThinking;
   bool get isPlayerTurn =>
       _currentSide == 1 && _outcome == null && !_isCloneThinking;
@@ -84,7 +84,7 @@ class GameNotifier extends ChangeNotifier {
     _playerWins = stats.playerWins;
     _cloneWins = stats.cloneWins;
     _draws = stats.draws;
-    _recentOutcomes = await db.loadRecentOutcomes();
+    _recentGames = await db.loadRecentGames();
   }
 
   Future<void> startNewGame() async {
@@ -304,6 +304,16 @@ class GameNotifier extends ChangeNotifier {
     await db.backfillStates(_gameId, winner, _ply);
     await db.updateGameOutcome(_gameId, winner, _ply);
 
+    // Persist per-game area for Go (territory games). Resigns intentionally
+    // bypass this funnel — `resign` calls `updateGameOutcome` directly so the
+    // area columns stay NULL. CF has no territory concept and is not a
+    // shipping configuration; the type guard keeps it safe regardless.
+    final r = rules;
+    if (r is GoRules) {
+      final score = r.areaScore(_displayBoard);
+      await db.updateGameAreaScore(_gameId, score.white, score.black);
+    }
+
     // Per-game winner-POV invariant: storage holds the winner's pieces as +1.
     // Player wins → already +1, leave as-is. Bot wins → flip every row.
     if (winner == -1) {
@@ -348,7 +358,7 @@ class GameNotifier extends ChangeNotifier {
     _playerWins = 0;
     _cloneWins = 0;
     _draws = 0;
-    _recentOutcomes = const [];
+    _recentGames = const [];
     _hasOngoingGame = false;
     _gameId = '';
     notifyListeners();

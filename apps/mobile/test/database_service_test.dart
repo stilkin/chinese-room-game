@@ -282,4 +282,63 @@ void main() {
       expect(g2Rows.first.materialBalance, 0);
     },
   );
+
+  group('area-score persistence (v6)', () {
+    test('updateGameAreaScore round-trips via loadRecentGames', () async {
+      await service.insertGame('g1');
+      await service.updateGameOutcome('g1', 1, 80);
+      await service.updateGameAreaScore('g1', 96, 73);
+
+      final recent = await service.loadRecentGames();
+      expect(recent, hasLength(1));
+      expect(recent.first.outcome, 1);
+      expect(recent.first.playerArea, 96);
+      expect(recent.first.cloneArea, 73);
+    });
+
+    test(
+      'loadRecentGames orders most-recent-first and skips ongoing',
+      () async {
+        await service.insertGame('older');
+        await service.updateGameOutcome('older', 1, 50);
+        await service.updateGameAreaScore('older', 70, 30);
+        // Force a started_at gap so order is deterministic.
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        await service.insertGame('newer');
+        await service.updateGameOutcome('newer', -1, 80);
+        await service.updateGameAreaScore('newer', 40, 60);
+        // Ongoing — must not appear in the results.
+        await service.insertGame('ongoing');
+
+        final recent = await service.loadRecentGames();
+        expect(recent.map((g) => g.outcome), [-1, 1]);
+        expect(recent.first.playerArea, 40);
+        expect(recent.first.cloneArea, 60);
+      },
+    );
+
+    test('loadRecentGames surfaces NULL area for resigned games', () async {
+      await service.insertGame('resigned');
+      // Resign path: outcome set, area NEVER persisted.
+      await service.updateGameOutcome('resigned', -1, 12);
+
+      final recent = await service.loadRecentGames();
+      expect(recent, hasLength(1));
+      expect(recent.first.outcome, -1);
+      expect(recent.first.playerArea, isNull);
+      expect(recent.first.cloneArea, isNull);
+    });
+
+    test('loadRecentGames honours limit', () async {
+      for (var i = 0; i < 5; i++) {
+        final id = 'g$i';
+        await service.insertGame(id);
+        await service.updateGameOutcome(id, 1, 10);
+        await service.updateGameAreaScore(id, 50, 50);
+        await Future<void>.delayed(const Duration(milliseconds: 2));
+      }
+      final recent = await service.loadRecentGames(limit: 3);
+      expect(recent, hasLength(3));
+    });
+  });
 }
