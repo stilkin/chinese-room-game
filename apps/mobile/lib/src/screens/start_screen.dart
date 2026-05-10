@@ -66,16 +66,10 @@ class StartScreen extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          // 皮影 — pí yǐng — Chinese shadow theatre. The clone
-                          // is your shadow, learning your moves and playing
-                          // them back. Surfaced here as the brand mark; a
-                          // longer explanation lives in Settings → About.
-                          Text(
-                            '皮影',
-                            textAlign: TextAlign.center,
-                            style: textTheme.displaySmall,
-                          ),
-                          const SizedBox(height: 4),
+                          // 皮影 (the brand mark) is already shown by the
+                          // launcher-icon image above; the subtitle stays
+                          // text-only to avoid duplicating the characters.
+                          // The longer explanation lives in Settings → About.
                           Text(
                             'shadow play of go',
                             textAlign: TextAlign.center,

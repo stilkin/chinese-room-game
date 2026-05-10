@@ -105,10 +105,11 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
             const Divider(height: 48),
-            FilledButton.tonal(
-              style: FilledButton.styleFrom(
-                foregroundColor: PiYingTheme.cinnabar,
-              ),
+            FilledButton(
+              // Plain FilledButton — picks up the theme's cinnabar bg and
+              // ivory foreground automatically. The earlier `tonal` variant
+              // with a per-button `foregroundColor: cinnabar` override
+              // produced cinnabar text on cinnabar bg (invisible label).
               onPressed: () => _confirmDelete(context, notifier),
               child: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
