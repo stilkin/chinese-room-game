@@ -55,6 +55,8 @@ class _GameScreenState extends State<GameScreen> {
   Widget build(BuildContext context) {
     final notifier = _notifier!;
     final canTap = !notifier.isCloneThinking && notifier.outcome == null;
+    final canResign = notifier.outcome == null && notifier.hasOngoingGame;
+    final score = notifier.currentAreaScore;
 
     return Scaffold(
       appBar: AppBar(title: const Text('PI-YING')),
@@ -68,6 +70,10 @@ class _GameScreenState extends State<GameScreen> {
                 isCloneThinking: notifier.isCloneThinking,
                 outcome: notifier.outcome,
               ),
+              if (score != null) ...[
+                const SizedBox(height: 6),
+                _AreaScoreLine(player: score.player, clone: score.clone),
+              ],
               const SizedBox(height: 12),
               AspectRatio(
                 aspectRatio: 1,
@@ -79,13 +85,75 @@ class _GameScreenState extends State<GameScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              _PassButton(onPressed: canTap ? notifier.pass : null),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _PassButton(onPressed: canTap ? notifier.pass : null),
+                  _ResignButton(
+                    onPressed: canResign
+                        ? () => _confirmResign(context, notifier)
+                        : null,
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
               _NarrationBubble(
                 text: notifier.narration.isEmpty ? '...' : notifier.narration,
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmResign(
+    BuildContext context,
+    GameNotifier notifier,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Resign?'),
+        content: const Text(
+          'Concede the game. The clone wins. The result is recorded as a loss.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: PiYingTheme.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Resign'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await notifier.resign();
+    }
+  }
+}
+
+/// Compact "AREA YOU 27 CLONE 22" line under the status banner. Mid-game the
+/// numbers are noisy because most empty intersections are dame, but the trend
+/// gives the player a sense of who's gaining territory.
+class _AreaScoreLine extends StatelessWidget {
+  final int player;
+  final int clone;
+  const _AreaScoreLine({required this.player, required this.clone});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Center(
+      child: Text(
+        'AREA  YOU $player  CLONE $clone',
+        style: textTheme.bodySmall?.copyWith(
+          color: PiYingTheme.onSurfaceMuted,
+          letterSpacing: 1.5,
         ),
       ),
     );
@@ -123,15 +191,31 @@ class _PassButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: PiYingTheme.outline, width: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-        ),
-        child: const Text('PASS', style: TextStyle(letterSpacing: 2)),
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        side: const BorderSide(color: PiYingTheme.outline, width: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       ),
+      child: const Text('PASS', style: TextStyle(letterSpacing: 2)),
+    );
+  }
+}
+
+class _ResignButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  const _ResignButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        side: const BorderSide(color: PiYingTheme.red, width: 2),
+        foregroundColor: PiYingTheme.red,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      ),
+      child: const Text('RESIGN', style: TextStyle(letterSpacing: 2)),
     );
   }
 }

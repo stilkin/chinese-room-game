@@ -28,6 +28,9 @@ class GoRules extends GameRules {
   /// The pass move's integer encoding.
   int get passMove => size * size;
 
+  @override
+  bool isPassMove(int move) => move == passMove;
+
   late final MoveScorer _scorer = GoMoveScorer(size);
   late final MoveSelectionStrategy _strategy = InfluenceOverlayStrategy(
     _scorer,
@@ -113,11 +116,19 @@ class GoRules extends GameRules {
 
   @override
   int finalOutcome(Board board) {
-    final score = _areaScore(board);
+    final score = areaScore(board);
     if (score.white > score.black) return 1;
     if (score.white < score.black) return -1;
     return 0;
   }
+
+  /// Chinese-style area score for the given board. Each side's count is
+  /// stones-on-board plus empty intersections whose connected region touches
+  /// only that side's stones. Empty regions touching both colours (dame)
+  /// score for neither. Public so the UI can surface a running tally
+  /// mid-game; the result on a partial board is noisy (most of the empty
+  /// space is dame) but the trend is meaningful.
+  ({int white, int black}) areaScore(Board board) => _areaScore(board);
 
   /// Flood-fill the same-colour group containing `(r, c)`. Returns the cells
   /// of the group (as flat indices `r * size + c`) and the count of distinct
@@ -177,9 +188,6 @@ class GoRules extends GameRules {
     return captured;
   }
 
-  /// Chinese-style area scoring: each side's stones plus empty regions
-  /// touching only that colour. Empty regions touching both colours (dame)
-  /// score for neither.
   ({int white, int black}) _areaScore(Board board) {
     var white = 0;
     var black = 0;

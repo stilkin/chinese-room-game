@@ -27,32 +27,16 @@ const List<_PersonalityLevel> _kSliderLevels = [
 
 const int _kDefaultSliderIndex = 0;
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
-
-  @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends State<SettingsScreen> {
-  late int _position;
-
-  @override
-  void initState() {
-    super.initState();
-    _position = _initialPosition(AppScope.of(context).fallback);
-  }
-
-  int _initialPosition(FallbackStrategy current) {
-    final idx = _kSliderLevels.indexWhere((l) => l.strategy == current);
-    return idx == -1 ? _kDefaultSliderIndex : idx;
-  }
 
   @override
   Widget build(BuildContext context) {
     final notifier = AppScope.of(context);
     final theme = Theme.of(context);
-    final level = _kSliderLevels[_position];
+    // Single-entry roster — slider is restored to a real Stateful widget when
+    // the personality ladder lands. Until then, just render the lone level.
+    final level = _kSliderLevels[_kDefaultSliderIndex];
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -117,7 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _confirmDelete(
+  static Future<void> _confirmDelete(
     BuildContext context,
     GameNotifier notifier,
   ) async {

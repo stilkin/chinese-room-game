@@ -82,7 +82,16 @@ class CloneBrain {
       );
     }
 
-    final completed = log.statesWithOutcome();
+    // Filter out pass-state rows: their boards are byte-equal to the prior
+    // state's board, so they teach nothing positionally and inflate the
+    // candidate pool with duplicate signal at the cells the player previously
+    // touched. Keep them in the log for replay/termination but exclude from
+    // CBR retrieval.
+    final completed =
+        log
+            .statesWithOutcome()
+            .where((s) => !rules.isPassMove(s.movePlayed))
+            .toList();
     if (completed.isEmpty) {
       return _fallbackDecision(legal, currentBoard);
     }

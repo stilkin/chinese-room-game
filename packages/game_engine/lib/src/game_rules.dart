@@ -34,6 +34,14 @@ abstract class GameRules {
   /// detection (Connect Four) are pure board operations.
   int finalOutcome(Board board);
 
+  /// True if `move` is the game's pass sentinel — i.e. a "no placement" move
+  /// whose stored `GameState` row carries no positional teaching content
+  /// (the board is byte-equal to the prior state's board). Pass rows are
+  /// excluded from the CBR candidate pool so they don't pollute retrieval.
+  /// Default false; games without a pass concept (e.g. Connect Four) inherit
+  /// the default. Go overrides on `move == passMove`.
+  bool isPassMove(int move) => false;
+
   DiffusionKernel get diffusionKernel;
   MoveSelectionStrategy get moveSelectionStrategy;
 

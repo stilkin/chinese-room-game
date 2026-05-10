@@ -231,6 +231,32 @@ class GameNotifier extends ChangeNotifier {
       ? (rules as GoRules).passMove
       : null;
 
+  /// Running Chinese-style area score for the current board, or null when
+  /// the game has no concept of area (e.g. Connect Four). Mid-game the
+  /// number is noisy (most of the empty board is dame) but the trend is
+  /// meaningful and the late-game number is exact.
+  ({int player, int clone})? get currentAreaScore {
+    final r = rules;
+    if (r is! GoRules) return null;
+    final score = r.areaScore(_displayBoard);
+    // areaScore returns ({white, black}); our display convention has
+    // player as +1 (white-coloured stones) and clone as -1 (dark stones).
+    return (player: score.white, clone: score.black);
+  }
+
+  /// Player concedes the game. Mechanically equivalent to a clone win:
+  /// outcome `-1`, normal end-of-game pipeline (backfill + winner-POV
+  /// inversion). The brain learns from the resigned game as it would from
+  /// any other clone win — positions where the player gave up are
+  /// genuinely positions where the clone was ahead, so the lesson is
+  /// correct.
+  Future<void> resign() async {
+    if (_outcome != null || !_hasOngoingGame) return;
+    _isCloneThinking = false;
+    await _endGame(-1);
+    notifyListeners();
+  }
+
   Future<void> _endGame(int winner) async {
     _outcome = winner;
     log.backfillGame(_gameId, winner, _ply);

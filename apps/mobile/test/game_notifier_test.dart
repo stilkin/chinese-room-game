@@ -211,6 +211,40 @@ void main() {
   });
 
   test(
+    'resign concedes the game and runs the normal end-of-game pipeline',
+    () async {
+      await f.notifier.startNewGame();
+      // Play one move so the resigned game has at least one stored state.
+      await f.notifier.playerMove(_move(6, 6));
+      await _settle(f.notifier);
+
+      await f.notifier.resign();
+
+      expect(f.notifier.outcome, -1);
+      expect(f.notifier.hasOngoingGame, false);
+      expect(f.notifier.gamesPlayed, 1);
+      // Stored states should all carry an outcome (backfill ran).
+      final loaded = await f.db.loadAllGameStates();
+      expect(loaded, isNotEmpty);
+      for (final s in loaded) {
+        expect(s.outcome, isNotNull);
+      }
+    },
+  );
+
+  test(
+    'resign on empty game records the loss without any stored states',
+    () async {
+      await f.notifier.startNewGame();
+      await f.notifier.resign();
+
+      expect(f.notifier.outcome, -1);
+      expect(f.notifier.hasOngoingGame, false);
+      expect(f.notifier.gamesPlayed, 1);
+    },
+  );
+
+  test(
     'setFallback persists; loadFallback coerces non-user-facing values',
     () async {
       // `random` is the only user-facing fallback at launch; persisting it

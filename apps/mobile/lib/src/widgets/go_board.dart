@@ -5,8 +5,11 @@ import '../theme.dart';
 
 const _kBoardBackground = PiYingTheme.surface;
 const _kLineColor = PiYingTheme.yellow;
-const _kPlayerStone = PiYingTheme.red;
-const _kCloneStone = PiYingTheme.yellow;
+// Player and clone stones approximate Go's white/black convention. The board
+// is dark, so the "black" stone is rendered as a near-black with a lighter
+// outline ring to keep it readable against the surface.
+const _kPlayerStone = PiYingTheme.onSurface; // warm ivory "white"
+const _kCloneStone = Color(0xFF0E0E14); // near-black
 
 /// Standard 13×13 star points (hoshi), spaced as a 3×3 grid of dots.
 const _k13x13StarPoints = [
@@ -201,12 +204,17 @@ class _GoBoardPainter extends CustomPainter {
         ),
     );
 
-    // Crisp edge against any background.
+    // Crisp edge. For dark stones we lighten the outline so the silhouette
+    // separates from the dark board; for light stones we darken it so the
+    // edge reads cleanly.
+    final outline = side == 1
+        ? Color.lerp(base, Colors.black, 0.3)!
+        : Color.lerp(base, Colors.white, 0.45)!;
     canvas.drawCircle(
       center,
       radius,
       Paint()
-        ..color = Color.lerp(base, Colors.black, 0.3)!
+        ..color = outline
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0,
     );
