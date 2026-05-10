@@ -316,14 +316,24 @@ class CloneBrain {
 
   /// Returns a `GameState` whose `diffusedImage` and `movePlayed` are mirrored
   /// (left-right flipped) so a candidate retrieved via a mirror query can be
-  /// added to the heatmap directly. Other fields are preserved as-is — the
-  /// strategy only reads `diffusedImage` from the state.
+  /// added to the heatmap directly. The strategy currently reads only
+  /// `diffusedImage`, but the mirrored `movePlayed` is computed correctly
+  /// regardless so any future consumer reads a consistent value.
   GameState _mirrorStateForHeatmap(GameState s) {
     final mirroredImage = _mirrorImage(s.diffusedImage, rules.rows, rules.cols);
+    // Pass moves are sentinel values outside the grid — leave untouched.
+    // For grid moves, mirror the column only. The formula reduces correctly
+    // for both CF (column-only encoding: `movePlayed ~/ cols == 0`) and Go
+    // (row-major: `r * cols + c`).
+    final mirroredMove =
+        rules.isPassMove(s.movePlayed)
+            ? s.movePlayed
+            : (s.movePlayed ~/ rules.cols) * rules.cols +
+                (rules.cols - 1 - (s.movePlayed % rules.cols));
     return GameState(
       board: s.board,
       diffusedImage: mirroredImage,
-      movePlayed: rules.cols - 1 - s.movePlayed,
+      movePlayed: mirroredMove,
       ply: s.ply,
       gameId: s.gameId,
       totalMaterial: s.totalMaterial,
