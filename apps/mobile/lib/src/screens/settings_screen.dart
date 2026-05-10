@@ -13,20 +13,20 @@ class _PersonalityLevel {
 }
 
 // Slider order is observed-strength order from the round-robin gate (50
-// games/direction, seed 42): Hugger < Chaotic < Star-point < Contact < Greedy.
-// Hugger lost 0/100 to Chaotic on 13×13 — overconcentrated dumpling shapes
-// lose to spread-out random play — so it earns the slider's weakest seat.
-// Star-point sits at slider mid as the recognisable textbook-Go default.
+// games/direction, seed 42): Wanderer < Star-point < Contact < Diamond < Greedy.
+// The Hugger personality was reworked as Diamond (now scores by
+// diagonal-friendly − orthogonal-friendly to encourage ponnuki / kosumi
+// shapes instead of weak "dumpling" clusters); Diamond rose from worst to
+// second-strongest. Chaotic (pure-random) was reworked as Wanderer
+// (Manhattan-2 prefilter, random within); Wanderer ended up *weaker* than
+// pure-random because concentrating random plays in interaction-prone
+// zones gets them punished. Contact at 51% win-rate is the new mid-of-slider
+// default — balanced opponent, neither too easy nor too hard.
 const List<_PersonalityLevel> _kSliderLevels = [
   _PersonalityLevel(
-    FallbackStrategy.goHugger,
-    'Hugger',
-    'clusters stones into thick shapes.',
-  ),
-  _PersonalityLevel(
     FallbackStrategy.random,
-    'Chaotic',
-    'plays anywhere legal.',
+    'Wanderer',
+    'plays randomly near existing stones.',
   ),
   _PersonalityLevel(
     FallbackStrategy.goStarPoints,
@@ -39,13 +39,18 @@ const List<_PersonalityLevel> _kSliderLevels = [
     'plays right at your stones.',
   ),
   _PersonalityLevel(
+    FallbackStrategy.goDiamond,
+    'Diamond',
+    'plays in ponnuki-like diamond shapes.',
+  ),
+  _PersonalityLevel(
     FallbackStrategy.goGreedyArea,
     'Greedy',
     'tries to maximise its territory.',
   ),
 ];
 
-const int _kDefaultSliderIndex = 2; // Star-point
+const int _kDefaultSliderIndex = 2; // Contact
 
 int _sliderIndexFor(FallbackStrategy strategy) {
   for (var i = 0; i < _kSliderLevels.length; i++) {

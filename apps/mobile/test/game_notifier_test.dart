@@ -253,15 +253,15 @@ void main() {
     'setFallback persists; loadFallback coerces non-user-facing values',
     () async {
       // Go-mode user-facing values round-trip faithfully.
-      await f.notifier.setFallback(FallbackStrategy.goHugger);
-      expect(f.notifier.fallback, FallbackStrategy.goHugger);
-      expect(await f.db.loadFallback(), FallbackStrategy.goHugger);
+      await f.notifier.setFallback(FallbackStrategy.goDiamond);
+      expect(f.notifier.fallback, FallbackStrategy.goDiamond);
+      expect(await f.db.loadFallback(), FallbackStrategy.goDiamond);
 
       // Legacy CF personalities still exist in the engine but aren't surfaced
       // in Go mode. If they're somehow persisted, `loadFallback` silently
-      // returns the user-facing default (Star-point) rather than reviving them.
+      // returns the user-facing default (Contact) rather than reviving them.
       await f.db.saveFallback(FallbackStrategy.greedyConnect);
-      expect(await f.db.loadFallback(), FallbackStrategy.goStarPoints);
+      expect(await f.db.loadFallback(), FallbackStrategy.goContact);
     },
   );
 }

@@ -341,17 +341,19 @@ class DatabaseService {
   /// personalities (`pileFocus`, `ownPileAdjacent`, `greedyConnect`,
   /// `greedyConnectDefense`, `middleFocus`) live on in the engine for
   /// benchmark use but are not surfaced via the slider. Any persisted value
-  /// not in this set is silently mapped to the default. Default is Star-point
-  /// — Hugger lost 0/100 to Chaotic in the round-robin gate, so Star-point
-  /// (textbook Go opening) takes the mid-of-slider default seat.
+  /// not in this set is silently mapped to the default. Legacy `goHugger`
+  /// strings (from before the Diamond rework) also coerce to the default —
+  /// the enum value no longer exists so `firstWhere` falls through.
+  /// Default is Contact (slider mid, ~51% win-rate against the field — a
+  /// balanced opponent neither too easy nor too hard for first impression).
   static const _kUserFacingFallbacks = {
     FallbackStrategy.random,
     FallbackStrategy.goStarPoints,
-    FallbackStrategy.goHugger,
+    FallbackStrategy.goDiamond,
     FallbackStrategy.goContact,
     FallbackStrategy.goGreedyArea,
   };
-  static const _kDefaultFallback = FallbackStrategy.goStarPoints;
+  static const _kDefaultFallback = FallbackStrategy.goContact;
 
   Future<FallbackStrategy> loadFallback() async {
     final rows = await db.query(

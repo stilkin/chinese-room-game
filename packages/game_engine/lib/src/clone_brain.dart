@@ -22,7 +22,7 @@ enum FallbackStrategy {
   // mobile slider's user-facing set gates this. The Go helpers below assert
   // `rules is GoRules` for clarity.
   goStarPoints,
-  goHugger,
+  goDiamond,
   goContact,
   goGreedyArea,
 }
@@ -33,6 +33,25 @@ enum FallbackStrategy {
 /// drown in low-relevance contributions because the prefilter passes
 /// hundreds of vaguely-similar rows once the database grows. Tunable.
 const int _kNearestPerQuery = 20;
+
+/// Standard 4-orthogonal offsets used by several Go fallbacks (Diamond,
+/// Contact, Greedy prefilter). Hoisted to module scope so each helper can
+/// reuse the same constant without re-declaring it inline.
+const _kOrthogonalOffsets = [
+  [-1, 0],
+  [1, 0],
+  [0, -1],
+  [0, 1],
+];
+
+/// 4-diagonal offsets (NE, NW, SE, SW). Used by the Diamond fallback's
+/// "diagonal-friendly" count.
+const _kDiagonalOffsets = [
+  [-1, -1],
+  [-1, 1],
+  [1, -1],
+  [1, 1],
+];
 
 class MoveDecision {
   final int move;
@@ -107,7 +126,7 @@ class CloneBrain {
     // Without this filter, `FallbackStrategy.random` would spontaneously
     // pass on Go cold-start (~0.6% of moves on an empty 13×13), and any
     // future fallback path would inherit the same bug. The Go scorer-based
-    // fallbacks (Hugger/Contact/Greedy/Star-point) already strip pass via
+    // fallbacks (Diamond/Contact/Greedy/Star-point) already strip pass via
     // `_goPlacementMoves` — this pool gives the same protection to
     // `random` and to any CF fallback that happens to be configured.
     final fallbackPool =
@@ -385,6 +404,16 @@ class CloneBrain {
   int _fallbackMove(List<int> legalMoves, Board board, int side) {
     switch (fallback) {
       case FallbackStrategy.random:
+        // For Go this is the "Wanderer" personality: uniformly random among
+        // empty cells within Manhattan-2 of any stone. The prefilter exists
+        // because pure-random on 13×13 spreads stones so thin they get
+        // individually claimed; concentrating play near existing stones
+        // produces actual interactions. Empty board (no stones) falls
+        // through to the Star-point opener. CF (no `rules is GoRules`)
+        // keeps the original uniform-random behaviour over `legalMoves`.
+        if (rules is GoRules) {
+          return _goWandererMove(legalMoves, board);
+        }
         return legalMoves[_random.nextInt(legalMoves.length)];
       case FallbackStrategy.middleFocus:
         return _legalClosestToMid(legalMoves);
@@ -398,8 +427,8 @@ class CloneBrain {
         return _sentinelMove(legalMoves, board);
       case FallbackStrategy.goStarPoints:
         return _goStarPointMove(_goPlacementMoves(legalMoves), board);
-      case FallbackStrategy.goHugger:
-        return _goHuggerMove(_goPlacementMoves(legalMoves), board, side);
+      case FallbackStrategy.goDiamond:
+        return _goDiamondMove(_goPlacementMoves(legalMoves), board, side);
       case FallbackStrategy.goContact:
         return _goContactMove(_goPlacementMoves(legalMoves), board, side);
       case FallbackStrategy.goGreedyArea:
@@ -563,21 +592,38 @@ class CloneBrain {
     return _pickByStarPointWeight(legalMoves);
   }
 
-  int _goHuggerMove(List<int> legalMoves, Board board, int side) {
-    assert(rules is GoRules, 'goHugger fallback requires GoRules');
-    return _pickByNeighbourCount(legalMoves, board, neighbourSign: side);
+  /// Wanderer: uniformly random among empty cells within Manhattan-2 of any
+  /// stone. Empty board → falls through to the Star-point opener so the
+  /// first move isn't a corner stone with no friends.
+  int _goWandererMove(List<int> legalMoves, Board board) {
+    assert(rules is GoRules, 'goWanderer fallback requires GoRules');
+    final placements = _goPlacementMoves(legalMoves);
+    final nearby = _goCellsNearStones(board, 2);
+    final candidates = placements.where(nearby.contains).toList();
+    if (candidates.isEmpty) return _pickByStarPointWeight(placements);
+    return candidates[_random.nextInt(candidates.length)];
+  }
+
+  /// Diamond: prefer cells diagonally adjacent to our own stones, actively
+  /// avoiding cells orthogonally adjacent to them. The resulting shape is a
+  /// "ponnuki"-style diamond / rhombus around our stones — Go-correct (each
+  /// stone covers 4 cells worth of influence) instead of a "dumpling" cluster.
+  /// Score = (diagonal-friendly count) - (orthogonal-friendly count).
+  int _goDiamondMove(List<int> legalMoves, Board board, int side) {
+    assert(rules is GoRules, 'goDiamond fallback requires GoRules');
+    return _pickByDiamondScore(legalMoves, board, friendlySign: side);
   }
 
   int _goContactMove(List<int> legalMoves, Board board, int side) {
     assert(rules is GoRules, 'goContact fallback requires GoRules');
-    return _pickByNeighbourCount(legalMoves, board, neighbourSign: -side);
+    return _pickByOrthogonalNeighbour(legalMoves, board, neighbourSign: -side);
   }
 
   /// Score by 4-orthogonal-adjacent count of stones with the given sign.
   /// Tie-break pyramid: count → Star-point weight → uniform random.
   /// Empty board / no stones of the target sign: count is uniformly zero,
   /// Star-point weight dominates → opens at hoshi without a special-case.
-  int _pickByNeighbourCount(
+  int _pickByOrthogonalNeighbour(
     List<int> legalMoves,
     Board board, {
     required int neighbourSign,
@@ -589,13 +635,7 @@ class CloneBrain {
       final r = move ~/ size;
       final c = move % size;
       var count = 0;
-      const offsets = [
-        [-1, 0],
-        [1, 0],
-        [0, -1],
-        [0, 1],
-      ];
-      for (final off in offsets) {
+      for (final off in _kOrthogonalOffsets) {
         final nr = r + off[0];
         final nc = c + off[1];
         if (nr < 0 || nr >= size || nc < 0 || nc >= size) continue;
@@ -603,18 +643,64 @@ class CloneBrain {
       }
       scored.add((move, count, _goStarPointWeight(r, c, size)));
     }
+    return _pickFromScored(scored, legalMoves);
+  }
+
+  /// Score = diagonal-friendly count minus orthogonal-friendly count. The
+  /// minus actively penalises "dumpling shape" (馬鹿形): two own stones in
+  /// orthogonal adjacency are weak in Go because they cover overlapping
+  /// territory. Diagonal pairs cover disjoint cells. Tie-break pyramid:
+  /// score → Star-point weight → uniform random.
+  int _pickByDiamondScore(
+    List<int> legalMoves,
+    Board board, {
+    required int friendlySign,
+  }) {
+    final size = rules.cols;
+    final scored = <(int move, int score, int weight)>[];
+    for (final move in legalMoves) {
+      if (rules.isPassMove(move)) continue;
+      final r = move ~/ size;
+      final c = move % size;
+      var diag = 0;
+      var orth = 0;
+      for (final off in _kDiagonalOffsets) {
+        final nr = r + off[0];
+        final nc = c + off[1];
+        if (nr < 0 || nr >= size || nc < 0 || nc >= size) continue;
+        if (board.get(nr, nc) == friendlySign) diag++;
+      }
+      for (final off in _kOrthogonalOffsets) {
+        final nr = r + off[0];
+        final nc = c + off[1];
+        if (nr < 0 || nr >= size || nc < 0 || nc >= size) continue;
+        if (board.get(nr, nc) == friendlySign) orth++;
+      }
+      scored.add((move, diag - orth, _goStarPointWeight(r, c, size)));
+    }
+    return _pickFromScored(scored, legalMoves);
+  }
+
+  /// Shared tie-break + random-survivor pick. `scored` is `(move, score,
+  /// weight)`; primary by score, secondary by weight, then uniform-random
+  /// among the maxima. Empty `scored` → first legal move (degenerate; the
+  /// caller is expected to hand at least one placement).
+  int _pickFromScored(
+    List<(int move, int score, int weight)> scored,
+    List<int> legalMoves,
+  ) {
     if (scored.isEmpty) return legalMoves.first;
-    var bestCount = scored.first.$2;
+    var bestScore = scored.first.$2;
     var bestWeight = scored.first.$3;
     for (final s in scored) {
-      if (s.$2 > bestCount || (s.$2 == bestCount && s.$3 > bestWeight)) {
-        bestCount = s.$2;
+      if (s.$2 > bestScore || (s.$2 == bestScore && s.$3 > bestWeight)) {
+        bestScore = s.$2;
         bestWeight = s.$3;
       }
     }
     final survivors =
         scored
-            .where((s) => s.$2 == bestCount && s.$3 == bestWeight)
+            .where((s) => s.$2 == bestScore && s.$3 == bestWeight)
             .map((s) => s.$1)
             .toList();
     return survivors[_random.nextInt(survivors.length)];
@@ -639,42 +725,45 @@ class CloneBrain {
     return survivors[_random.nextInt(survivors.length)];
   }
 
-  /// Empty intersections with at least one 4-orthogonal-adjacent stone (any
-  /// colour). Used by Greedy as a 1-step neighbourhood prefilter — keeps the
-  /// per-turn cost predictable on a phone (~30–50 candidates mid-game vs.
-  /// ~150+ if we evaluated every empty intersection). Acknowledged downside:
-  /// Greedy never founds new frameworks far from existing stones; that's fine
-  /// for a fallback whose job is "weak heuristic personality", not "good Go".
-  Set<int> _goNeighbourOfStoneCandidates(Board board) {
+  /// Empty intersections within `maxDistance` Manhattan steps of any stone.
+  /// Used by Greedy (`maxDistance = 1`, ~30–50 candidates mid-game) and
+  /// Wanderer (`maxDistance = 2`, broader neighbourhood for random play).
+  /// Both keep per-turn cost predictable on a phone vs. evaluating every
+  /// empty intersection. Acknowledged downside: neither bot founds new
+  /// frameworks far from existing stones; fine for a fallback's "weak
+  /// heuristic" role.
+  Set<int> _goCellsNearStones(Board board, int maxDistance) {
     final size = rules.cols;
     final result = <int>{};
-    const offsets = [
-      [-1, 0],
-      [1, 0],
-      [0, -1],
-      [0, 1],
-    ];
     for (var r = 0; r < size; r++) {
       for (var c = 0; c < size; c++) {
         if (board.get(r, c) != 0) continue;
-        for (final off in offsets) {
-          final nr = r + off[0];
-          final nc = c + off[1];
-          if (nr < 0 || nr >= size || nc < 0 || nc >= size) continue;
-          if (board.get(nr, nc) != 0) {
-            result.add(r * size + c);
-            break;
-          }
+        if (_hasStoneWithin(board, r, c, maxDistance, size)) {
+          result.add(r * size + c);
         }
       }
     }
     return result;
   }
 
+  bool _hasStoneWithin(Board board, int r, int c, int maxDistance, int size) {
+    for (var dr = -maxDistance; dr <= maxDistance; dr++) {
+      for (var dc = -maxDistance; dc <= maxDistance; dc++) {
+        if (dr == 0 && dc == 0) continue;
+        if (dr.abs() + dc.abs() > maxDistance) continue;
+        final nr = r + dr;
+        final nc = c + dc;
+        if (nr < 0 || nr >= size || nc < 0 || nc >= size) continue;
+        if (board.get(nr, nc) != 0) return true;
+      }
+    }
+    return false;
+  }
+
   int _goGreedyAreaMove(List<int> legalMoves, Board board, int side) {
     assert(rules is GoRules, 'goGreedyArea fallback requires GoRules');
     final goRules = rules as GoRules;
-    final neighbourhood = _goNeighbourOfStoneCandidates(board);
+    final neighbourhood = _goCellsNearStones(board, 1);
     final candidates =
         legalMoves
             .where((m) => !rules.isPassMove(m) && neighbourhood.contains(m))
