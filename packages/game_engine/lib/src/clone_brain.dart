@@ -6,6 +6,7 @@ import 'canonicalize.dart';
 import 'diffusion.dart';
 import 'game_rules.dart';
 import 'game_state.dart';
+import 'games/go.dart';
 import 'move_selection.dart';
 import 'narration.dart';
 import 'similarity.dart';
@@ -17,6 +18,13 @@ enum FallbackStrategy {
   ownPileAdjacent,
   greedyConnect,
   greedyConnectDefense,
+  // Go-mode personalities. Selectable only when `rules is GoRules`; the
+  // mobile slider's user-facing set gates this. The Go helpers below assert
+  // `rules is GoRules` for clarity.
+  goStarPoints,
+  goHugger,
+  goContact,
+  goGreedyArea,
 }
 
 /// Per-query cap on candidates that contribute to the heatmap. The matcher
@@ -93,7 +101,7 @@ class CloneBrain {
             .where((s) => !rules.isPassMove(s.movePlayed))
             .toList();
     if (completed.isEmpty) {
-      return _fallbackDecision(legal, currentBoard);
+      return _fallbackDecision(legal, currentBoard, side);
     }
 
     // Pass should only enter the brain's selection set when the opponent
@@ -113,7 +121,7 @@ class CloneBrain {
             ? legal
             : legal.where((m) => !rules.isPassMove(m)).toList();
     if (brainLegal.isEmpty) {
-      return _fallbackDecision(legal, currentBoard);
+      return _fallbackDecision(legal, currentBoard, side);
     }
 
     // Four queries: perspective × mirror. Q_A and Q_B target different
@@ -141,7 +149,7 @@ class CloneBrain {
     }
 
     if (all.isEmpty) {
-      return _fallbackDecision(legal, currentBoard);
+      return _fallbackDecision(legal, currentBoard, side);
     }
 
     final selected = rules.moveSelectionStrategy.selectMove(
@@ -150,7 +158,7 @@ class CloneBrain {
       currentBoard,
     );
     if (selected == null) {
-      return _fallbackDecision(legal, currentBoard);
+      return _fallbackDecision(legal, currentBoard, side);
     }
 
     // All-losing guard: rebuild the heatmap and check the chosen move's score.
@@ -162,7 +170,7 @@ class CloneBrain {
     );
     final score = rules.moveScorer.scoreMove(selected, currentBoard, heatmap);
     if (score <= 0) {
-      final move = _fallbackMove(legal, currentBoard);
+      final move = _fallbackMove(legal, currentBoard, side);
       return MoveDecision(
         move: move,
         narration: narrate(DecisionContext.allLosing),
@@ -281,8 +289,8 @@ class CloneBrain {
     return narrate(DecisionContext.fuzzyMatch);
   }
 
-  MoveDecision _fallbackDecision(List<int> legalMoves, Board board) {
-    final move = _fallbackMove(legalMoves, board);
+  MoveDecision _fallbackDecision(List<int> legalMoves, Board board, int side) {
+    final move = _fallbackMove(legalMoves, board, side);
     return MoveDecision(
       move: move,
       narration: narrate(
@@ -294,7 +302,7 @@ class CloneBrain {
     );
   }
 
-  int _fallbackMove(List<int> legalMoves, Board board) {
+  int _fallbackMove(List<int> legalMoves, Board board, int side) {
     switch (fallback) {
       case FallbackStrategy.random:
         return legalMoves[_random.nextInt(legalMoves.length)];
@@ -308,6 +316,14 @@ class CloneBrain {
         return _connectorMove(legalMoves, board);
       case FallbackStrategy.greedyConnectDefense:
         return _sentinelMove(legalMoves, board);
+      case FallbackStrategy.goStarPoints:
+        return _goStarPointMove(_goPlacementMoves(legalMoves), board);
+      case FallbackStrategy.goHugger:
+        return _goHuggerMove(_goPlacementMoves(legalMoves), board, side);
+      case FallbackStrategy.goContact:
+        return _goContactMove(_goPlacementMoves(legalMoves), board, side);
+      case FallbackStrategy.goGreedyArea:
+        return _goGreedyAreaMove(_goPlacementMoves(legalMoves), board, side);
     }
   }
 
@@ -433,6 +449,189 @@ class CloneBrain {
     }
     // Should be unreachable given caller contract.
     return -1;
+  }
+
+  /// Strip Go's `passMove` sentinel from `legal`, so the Go fallbacks score
+  /// only real placements. If only pass is legal (board full / suicide-only),
+  /// fall back to the original list — the chosen helper will pick passMove
+  /// as the sole option without crashing.
+  List<int> _goPlacementMoves(List<int> legal) {
+    final placements = legal.where((m) => !rules.isPassMove(m)).toList();
+    return placements.isEmpty ? legal : placements;
+  }
+
+  /// Static board-position weight for Go. Single function, used by all four
+  /// Go fallbacks. Hard-coded for `size == 13`; other sizes get a
+  /// degenerate-but-safe lookup (every cell scores 0, so callers fall through
+  /// to their secondary tie-break — random for `goStarPoints`, the primary
+  /// score for the others). 13×13 is the only shipping board.
+  int _goStarPointWeight(int r, int c, int size) {
+    if (size != 13) return 0;
+    final hoshi = (r == 3 || r == 6 || r == 9) && (c == 3 || c == 6 || c == 9);
+    if (hoshi) return 3;
+    final on34 = r == 2 || r == 3 || r == 9 || r == 10;
+    final oc34 = c == 2 || c == 3 || c == 9 || c == 10;
+    if (on34 || oc34) return 2;
+    final firstLine = r == 0 || r == 12 || c == 0 || c == 12;
+    final centreCross = r == 6 || c == 6;
+    if (firstLine || centreCross) return 1;
+    return 0;
+  }
+
+  int _goStarPointMove(List<int> legalMoves, Board board) {
+    assert(rules is GoRules, 'goStarPoints fallback requires GoRules');
+    return _pickByStarPointWeight(legalMoves);
+  }
+
+  int _goHuggerMove(List<int> legalMoves, Board board, int side) {
+    assert(rules is GoRules, 'goHugger fallback requires GoRules');
+    return _pickByNeighbourCount(legalMoves, board, neighbourSign: side);
+  }
+
+  int _goContactMove(List<int> legalMoves, Board board, int side) {
+    assert(rules is GoRules, 'goContact fallback requires GoRules');
+    return _pickByNeighbourCount(legalMoves, board, neighbourSign: -side);
+  }
+
+  /// Score by 4-orthogonal-adjacent count of stones with the given sign.
+  /// Tie-break pyramid: count → Star-point weight → uniform random.
+  /// Empty board / no stones of the target sign: count is uniformly zero,
+  /// Star-point weight dominates → opens at hoshi without a special-case.
+  int _pickByNeighbourCount(
+    List<int> legalMoves,
+    Board board, {
+    required int neighbourSign,
+  }) {
+    final size = rules.cols;
+    final scored = <(int move, int count, int weight)>[];
+    for (final move in legalMoves) {
+      if (rules.isPassMove(move)) continue;
+      final r = move ~/ size;
+      final c = move % size;
+      var count = 0;
+      const offsets = [
+        [-1, 0],
+        [1, 0],
+        [0, -1],
+        [0, 1],
+      ];
+      for (final off in offsets) {
+        final nr = r + off[0];
+        final nc = c + off[1];
+        if (nr < 0 || nr >= size || nc < 0 || nc >= size) continue;
+        if (board.get(nr, nc) == neighbourSign) count++;
+      }
+      scored.add((move, count, _goStarPointWeight(r, c, size)));
+    }
+    if (scored.isEmpty) return legalMoves.first;
+    var bestCount = scored.first.$2;
+    var bestWeight = scored.first.$3;
+    for (final s in scored) {
+      if (s.$2 > bestCount || (s.$2 == bestCount && s.$3 > bestWeight)) {
+        bestCount = s.$2;
+        bestWeight = s.$3;
+      }
+    }
+    final survivors =
+        scored
+            .where((s) => s.$2 == bestCount && s.$3 == bestWeight)
+            .map((s) => s.$1)
+            .toList();
+    return survivors[_random.nextInt(survivors.length)];
+  }
+
+  int _pickByStarPointWeight(List<int> legalMoves) {
+    final size = rules.cols;
+    final placements = legalMoves.where((m) => !rules.isPassMove(m)).toList();
+    if (placements.isEmpty) return legalMoves.first;
+    var bestWeight = -1;
+    for (final move in placements) {
+      final w = _goStarPointWeight(move ~/ size, move % size, size);
+      if (w > bestWeight) bestWeight = w;
+    }
+    final survivors =
+        placements
+            .where(
+              (m) =>
+                  _goStarPointWeight(m ~/ size, m % size, size) == bestWeight,
+            )
+            .toList();
+    return survivors[_random.nextInt(survivors.length)];
+  }
+
+  /// Empty intersections with at least one 4-orthogonal-adjacent stone (any
+  /// colour). Used by Greedy as a 1-step neighbourhood prefilter — keeps the
+  /// per-turn cost predictable on a phone (~30–50 candidates mid-game vs.
+  /// ~150+ if we evaluated every empty intersection). Acknowledged downside:
+  /// Greedy never founds new frameworks far from existing stones; that's fine
+  /// for a fallback whose job is "weak heuristic personality", not "good Go".
+  Set<int> _goNeighbourOfStoneCandidates(Board board) {
+    final size = rules.cols;
+    final result = <int>{};
+    const offsets = [
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1],
+    ];
+    for (var r = 0; r < size; r++) {
+      for (var c = 0; c < size; c++) {
+        if (board.get(r, c) != 0) continue;
+        for (final off in offsets) {
+          final nr = r + off[0];
+          final nc = c + off[1];
+          if (nr < 0 || nr >= size || nc < 0 || nc >= size) continue;
+          if (board.get(nr, nc) != 0) {
+            result.add(r * size + c);
+            break;
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  int _goGreedyAreaMove(List<int> legalMoves, Board board, int side) {
+    assert(rules is GoRules, 'goGreedyArea fallback requires GoRules');
+    final goRules = rules as GoRules;
+    final neighbourhood = _goNeighbourOfStoneCandidates(board);
+    final candidates =
+        legalMoves
+            .where((m) => !rules.isPassMove(m) && neighbourhood.contains(m))
+            .toList();
+    if (candidates.isEmpty) {
+      // Empty board (or all stones isolated from any legal placement) — fall
+      // through to the Star-point opener.
+      return _pickByStarPointWeight(legalMoves);
+    }
+    final size = rules.cols;
+    final scored = <(int move, int diff, int weight)>[];
+    for (final move in candidates) {
+      final trial = goRules.applyMove(board, move, side);
+      final s = goRules.areaScore(trial);
+      // areaScore is white-centric (white = +1, black = -1), not side-relative.
+      // Flip to "own − opponent" by multiplying by `side`.
+      final diff = (s.white - s.black) * side;
+      scored.add((
+        move,
+        diff,
+        _goStarPointWeight(move ~/ size, move % size, size),
+      ));
+    }
+    var bestDiff = scored.first.$2;
+    var bestWeight = scored.first.$3;
+    for (final s in scored) {
+      if (s.$2 > bestDiff || (s.$2 == bestDiff && s.$3 > bestWeight)) {
+        bestDiff = s.$2;
+        bestWeight = s.$3;
+      }
+    }
+    final survivors =
+        scored
+            .where((s) => s.$2 == bestDiff && s.$3 == bestWeight)
+            .map((s) => s.$1)
+            .toList();
+    return survivors[_random.nextInt(survivors.length)];
   }
 
   /// Longest contiguous run of [side] through (row, col), treating that cell

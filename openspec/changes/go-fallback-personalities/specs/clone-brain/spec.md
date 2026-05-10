@@ -16,8 +16,8 @@ For Connect Four (`ConnectFourRules`), the engine SHALL provide:
 For Go (`GoRules`), the engine SHALL provide:
 
 - `random` — uniformly random legal placement. *User-facing label: "Chaotic".* (Same enum value as CF; distinct user-facing semantics — pass moves are excluded from the candidate pool by the brain layer before the fallback receives the legal-moves list.)
-- `goStarPoints` — score each legal placement by a static per-cell weight (3 at hoshi/tengen, 2 on the 3rd/4th lines, 1 on the 1st line and the centre cross, 0 elsewhere); pick max with random tie-break. *User-facing label: "Star-point".*
-- `goHugger` — score each legal placement by its count of 4-orthogonal-adjacent friendly (`+1`) stones; pick max with Star-point weight as secondary tie-break, then random. *User-facing label: "Hugger". Default for Go installs.*
+- `goStarPoints` — score each legal placement by a static per-cell weight (3 at hoshi/tengen, 2 on the 3rd/4th lines, 1 on the 1st line and the centre cross, 0 elsewhere); pick max with random tie-break. *User-facing label: "Star-point". Default for Go installs.*
+- `goHugger` — score each legal placement by its count of 4-orthogonal-adjacent friendly (`+1`) stones; pick max with Star-point weight as secondary tie-break, then random. *User-facing label: "Hugger".*
 - `goContact` — score each legal placement by its count of 4-orthogonal-adjacent enemy (`-1`) stones; same tie-break as `goHugger`. *User-facing label: "Contact".*
 - `goGreedyArea` — for each candidate placement (empty cells with at least one 4-orthogonal-adjacent stone of any colour; falls through to Star-point if the candidate set is empty), apply the move and compute the resulting Chinese-style area-score differential `(own_area − opponent_area)`; pick the differential-maximising move with Star-point weight tie-break, then random. *User-facing label: "Greedy".*
 
@@ -84,4 +84,4 @@ The Go-mode strategies SHALL NOT be selectable via the user-facing settings UI w
 - **AND** the candidate set has at least one move
 - **THEN** the bot SHALL pick the candidate that maximises `(own_area − opponent_area)` after applying the move, where `own_area` and `opponent_area` are returned by `GoRules.areaScore` on the post-move board
 
-_(Note: legacy persisted values not in the user-facing set for the active game SHALL be silently mapped to the default at the persistence layer: `pileFocus` (Stacker) for CF mode, `goHugger` (Hugger) for Go mode.)_
+_(Note: legacy persisted values not in the user-facing set for the active game SHALL be silently mapped to the default at the persistence layer: `pileFocus` (Stacker) for CF mode, `goStarPoints` (Star-point) for Go mode.)_

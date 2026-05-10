@@ -302,14 +302,21 @@ class DatabaseService {
     );
   }
 
-  /// User-facing fallback strategies for Go's launch. The Connect-Four-shaped
+  /// User-facing fallback strategies for Go mode. The Connect-Four-shaped
   /// personalities (`pileFocus`, `ownPileAdjacent`, `greedyConnect`,
-  /// `greedyConnectDefense`) live on in the engine for benchmark use but are
-  /// no longer surfaced via the slider — Go-specific personalities are the
-  /// subject of a follow-up change. Any persisted value not in this set is
-  /// silently mapped to the default.
-  static const _kUserFacingFallbacks = {FallbackStrategy.random};
-  static const _kDefaultFallback = FallbackStrategy.random;
+  /// `greedyConnectDefense`, `middleFocus`) live on in the engine for
+  /// benchmark use but are not surfaced via the slider. Any persisted value
+  /// not in this set is silently mapped to the default. Default is Star-point
+  /// — Hugger lost 0/100 to Chaotic in the round-robin gate, so Star-point
+  /// (textbook Go opening) takes the mid-of-slider default seat.
+  static const _kUserFacingFallbacks = {
+    FallbackStrategy.random,
+    FallbackStrategy.goStarPoints,
+    FallbackStrategy.goHugger,
+    FallbackStrategy.goContact,
+    FallbackStrategy.goGreedyArea,
+  };
+  static const _kDefaultFallback = FallbackStrategy.goStarPoints;
 
   Future<FallbackStrategy> loadFallback() async {
     final rows = await db.query(

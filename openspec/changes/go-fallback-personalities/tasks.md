@@ -27,9 +27,28 @@
 
 ## 4. Engine: behavioural sanity benchmark (gate)
 
-- [ ] 4.1 Run the round-robin with seed 42, 50 games per direction.
-- [ ] 4.2 Record the aggregate-wins ranking in this tasks file.
-- [ ] 4.3 Apply the slider-position-swap rule from design.md if observed strength contradicts paper expectation by more than one adjacent swap. Document any swaps.
+- [x] 4.1 Run the round-robin with seed 42, 50 games per direction (2000 games, ~5min on dev box).
+- [x] 4.2 **Aggregate ranking**:
+
+  ```
+  gogreedy   380   (95% win rate)
+  gocontact  300   (75%)
+  gostar     167   (42%)
+  chaotic    109   (27%)
+  gohugger    43   (11%)
+  ```
+
+  Pairwise: Hugger < Chaotic < Star-point < Contact < Greedy (strict). The top three (Greedy ≥ Contact ≥ Star-point) match paper expectations; the bottom two are inverted: **Hugger lost 0/100 to Chaotic** and underperformed even random play.
+
+  *Diagnosis*: on 13×13 Go, "stick stones together" produces overconcentrated dumpling shapes with no eye-room and no territory framework. Chaotic spreads stones across the board and accidentally claims more area. Hugger is genuinely weaker than random — the personality is fine to *keep* (it's a recognisable shape, just deliberately bad), but it doesn't earn the middle slider position.
+
+- [x] 4.3 **Swap applied** (per design.md §3): slider reordered to match observed strength.
+
+  **New order** (slider position → personality): `Hugger → Chaotic → Star-point (default) → Contact → Greedy`.
+
+  **Default moves** from Hugger (originally position 2) to Star-point (new position 2). Star-point is a textbook Go opener and a stronger mid-of-slider choice. Hugger keeps its place in the lineup as the deliberately-weakest "thick-shape" personality.
+
+  Hugger's blurb tightened from "extends its own shapes" to a more honest description.
 
 ## 5. Mobile: persistence
 

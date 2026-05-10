@@ -12,31 +12,74 @@ class _PersonalityLevel {
   const _PersonalityLevel(this.strategy, this.name, this.blurb);
 }
 
-// Single-entry roster for the Go launch. The Connect-Four-shaped personalities
-// (Builder, Stacker, Connector, Sentinel) survive in the engine package for
-// benchmark use but aren't surfaced on the slider — Go-specific personalities
-// arrive in a follow-up change. The slider widget is replaced by a static
-// label below until there are enough entries to make a slider meaningful.
+// Slider order is observed-strength order from the round-robin gate (50
+// games/direction, seed 42): Hugger < Chaotic < Star-point < Contact < Greedy.
+// Hugger lost 0/100 to Chaotic on 13×13 — overconcentrated dumpling shapes
+// lose to spread-out random play — so it earns the slider's weakest seat.
+// Star-point sits at slider mid as the recognisable textbook-Go default.
 const List<_PersonalityLevel> _kSliderLevels = [
+  _PersonalityLevel(
+    FallbackStrategy.goHugger,
+    'Hugger',
+    'clusters stones into thick shapes.',
+  ),
   _PersonalityLevel(
     FallbackStrategy.random,
     'Chaotic',
     'plays anywhere legal.',
   ),
+  _PersonalityLevel(
+    FallbackStrategy.goStarPoints,
+    'Star-point',
+    'favours classic opening points.',
+  ),
+  _PersonalityLevel(
+    FallbackStrategy.goContact,
+    'Contact',
+    'plays right at your stones.',
+  ),
+  _PersonalityLevel(
+    FallbackStrategy.goGreedyArea,
+    'Greedy',
+    'tries to maximise its territory.',
+  ),
 ];
 
-const int _kDefaultSliderIndex = 0;
+const int _kDefaultSliderIndex = 2; // Star-point
 
-class SettingsScreen extends StatelessWidget {
+int _sliderIndexFor(FallbackStrategy strategy) {
+  for (var i = 0; i < _kSliderLevels.length; i++) {
+    if (_kSliderLevels[i].strategy == strategy) return i;
+  }
+  return _kDefaultSliderIndex;
+}
+
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  // Local drag state — the persisted value lives on the notifier, but the
+  // slider thumb tracks the user's in-progress drag without committing until
+  // they release. Initialised lazily in didChangeDependencies (InheritedWidget
+  // lookups are illegal in initState).
+  int? _sliderIndex;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sliderIndex ??= _sliderIndexFor(AppScope.of(context).fallback);
+  }
 
   @override
   Widget build(BuildContext context) {
     final notifier = AppScope.of(context);
     final theme = Theme.of(context);
-    // Single-entry roster — slider is restored to a real Stateful widget when
-    // the personality ladder lands. Until then, just render the lone level.
-    final level = _kSliderLevels[_kDefaultSliderIndex];
+    final index = _sliderIndex ?? _kDefaultSliderIndex;
+    final level = _kSliderLevels[index];
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -92,17 +135,18 @@ class SettingsScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
             ),
-            const SizedBox(height: 32),
-            // Single personality at launch — slider is restored when a Go
-            // personality ladder lands.
-            Center(
-              child: Text(
-                'more personalities arrive in a future update.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: PiYingTheme.onSurfaceMuted,
-                ),
-                textAlign: TextAlign.center,
-              ),
+            const SizedBox(height: 16),
+            Slider(
+              min: 0,
+              max: (_kSliderLevels.length - 1).toDouble(),
+              divisions: _kSliderLevels.length - 1,
+              value: index.toDouble(),
+              activeColor: PiYingTheme.cinnabar,
+              onChanged: (v) => setState(() => _sliderIndex = v.round()),
+              onChangeEnd: (v) async {
+                final i = v.round();
+                await notifier.setFallback(_kSliderLevels[i].strategy);
+              },
             ),
             const Divider(height: 48),
             FilledButton(

@@ -249,18 +249,16 @@ void main() {
   test(
     'setFallback persists; loadFallback coerces non-user-facing values',
     () async {
-      // `random` is the only user-facing fallback at launch; persisting it
-      // round-trips faithfully.
-      await f.notifier.setFallback(FallbackStrategy.random);
-      expect(f.notifier.fallback, FallbackStrategy.random);
-      expect(await f.db.loadFallback(), FallbackStrategy.random);
+      // Go-mode user-facing values round-trip faithfully.
+      await f.notifier.setFallback(FallbackStrategy.goHugger);
+      expect(f.notifier.fallback, FallbackStrategy.goHugger);
+      expect(await f.db.loadFallback(), FallbackStrategy.goHugger);
 
-      // The legacy CF personalities still exist in the engine but are no longer
-      // surfaced. If they're somehow persisted (e.g. a v3 install upgrading
-      // their `clone_config` row mid-bug), `loadFallback` silently returns
-      // the user-facing default rather than reviving them.
+      // Legacy CF personalities still exist in the engine but aren't surfaced
+      // in Go mode. If they're somehow persisted, `loadFallback` silently
+      // returns the user-facing default (Star-point) rather than reviving them.
       await f.db.saveFallback(FallbackStrategy.greedyConnect);
-      expect(await f.db.loadFallback(), FallbackStrategy.random);
+      expect(await f.db.loadFallback(), FallbackStrategy.goStarPoints);
     },
   );
 }

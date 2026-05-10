@@ -82,12 +82,14 @@ We do **not** split the enum into per-game enums or extract a `Personality` inte
 Flutter `Slider` with `divisions: 4`, value range 0–4. Mirror of the CF slider that shipped earlier. The slider value indexes into a fixed Go-mode list of `(strategy, name, blurb)` tuples:
 
 ```text
-0 — Chaotic    — "plays anywhere legal."
-1 — Star-point — "favours classic opening points."
-2 — Hugger     — "extends its own shapes."          ← default
+0 — Hugger     — "clusters stones into thick shapes."
+1 — Chaotic    — "plays anywhere legal."
+2 — Star-point — "favours classic opening points."  ← default
 3 — Contact    — "plays right at your stones."
 4 — Greedy     — "tries to maximise its territory."
 ```
+
+(Original paper order put Chaotic at position 0 and Hugger at position 2 as the default. The round-robin gate at 50 games/direction showed Hugger losing 0/100 to Chaotic on 13×13 Go — overconcentrated "dumpling" shapes lose to randomly-spread stones because the latter accidentally claims more territory. Per the swap-on-disagreement protocol, slider positions 0–2 were reordered to match observed strength, and the default moved to Star-point. Hugger keeps its lineup slot as the deliberately-weakest "thick-shape" personality.)
 
 Big name in display font, the one-line blurb below in body font. Live update as the user drags. Persists on `onChangeEnd` (no Save button — same pattern as CF).
 
@@ -95,9 +97,9 @@ The current Settings screen is a `StatelessWidget` with a static `Text`; this ch
 
 ### Default flow
 
-- New install: `loadFallback` returns `goHugger` (no row in `clone_config`).
+- New install: `loadFallback` returns `goStarPoints` (no row in `clone_config`). *(Updated post-gate: was `goHugger` in the original paper plan.)*
 - Existing install with stored `random` (the Go cutover's default): honoured.
-- Existing install with stored CF-shaped values (`pileFocus`, `ownPileAdjacent`, `greedyConnect`, `greedyConnectDefense`, `middleFocus`, `edgeFocus`, etc.): silently mapped to `goHugger`. The CF cutover already coerced these to `random`, so realistically the only stored values in the wild after this change ships are `random` and the four new Go values.
+- Existing install with stored CF-shaped values (`pileFocus`, `ownPileAdjacent`, `greedyConnect`, `greedyConnectDefense`, `middleFocus`, `edgeFocus`, etc.): silently mapped to `goStarPoints`. The CF cutover already coerced these to `random`, so realistically the only stored values in the wild after this change ships are `random` and the four new Go values.
 
 ### Benchmark validation gate (before ship)
 

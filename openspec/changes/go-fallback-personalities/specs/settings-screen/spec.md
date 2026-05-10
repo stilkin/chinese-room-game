@@ -6,13 +6,13 @@ The settings screen SHALL allow the player to select a fallback personality for 
 
 | Position | Strategy        | Name       | Blurb                                  |
 |----------|-----------------|------------|----------------------------------------|
-| 0        | `random`        | Chaotic    | plays anywhere legal.                  |
-| 1        | `goStarPoints`  | Star-point | favours classic opening points.        |
-| 2        | `goHugger`      | Hugger     | extends its own shapes.                |
+| 0        | `goHugger`      | Hugger     | clusters stones into thick shapes.     |
+| 1        | `random`        | Chaotic    | plays anywhere legal.                  |
+| 2        | `goStarPoints`  | Star-point | favours classic opening points.        |
 | 3        | `goContact`     | Contact    | plays right at your stones.            |
 | 4        | `goGreedyArea`  | Greedy     | tries to maximise its territory.       |
 
-The slider's positions are ordered by behavioural strength as observed in head-to-head self-play, so "further right" reads as both "more complex" and "stronger." If the round-robin gate observes a different ordering, slider positions SHALL be swapped to match. The selection SHALL persist across app restarts. The default for fresh installs SHALL be position 2 (Hugger).
+The slider's positions are ordered by behavioural strength as observed in head-to-head self-play (round-robin gate, 50 games per direction, seed 42), so "further right" reads as both "more complex" and "stronger." Hugger sits at position 0 because the gate showed its dumpling-shape play losing even to uniformly-random placement; the personality is kept for variety but earns the slider's weakest seat. If a future round-robin run observes a different ordering, slider positions SHALL be swapped to match. The selection SHALL persist across app restarts. The default for fresh installs SHALL be position 2 (Star-point).
 
 #### Scenario: Slider shows current personality name and blurb
 - **WHEN** the player opens the settings screen
@@ -29,11 +29,11 @@ The slider's positions are ordered by behavioural strength as observed in head-t
 
 #### Scenario: Default for fresh installs (Go mode)
 - **WHEN** the player opens the settings screen for the first time on a fresh install in Go mode
-- **THEN** the slider SHALL be at position 2 (Hugger) and no save SHALL have occurred yet
+- **THEN** the slider SHALL be at position 2 (Star-point) and no save SHALL have occurred yet
 
 #### Scenario: Legacy or unknown persisted value remapped on read
 - **WHEN** the persisted fallback value is not in the Go user-facing slider list (e.g. `pileFocus`, `ownPileAdjacent`, `greedyConnect`, `greedyConnectDefense`, `middleFocus`, `edgeFocus`, or any unrecognised string)
-- **THEN** `loadFallback` SHALL return `goHugger` and the settings screen SHALL display the slider at position 2 (Hugger)
+- **THEN** `loadFallback` SHALL return `goStarPoints` and the settings screen SHALL display the slider at position 2 (Star-point)
 
 #### Scenario: Personality affects clone fallback only
 - **WHEN** the clone has relevant past-game data

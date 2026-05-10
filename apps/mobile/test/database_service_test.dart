@@ -117,42 +117,49 @@ void main() {
     expect(await service.getGamesPlayedCount(), 1);
   });
 
-  test(
-    'fallback defaults to Chaotic at Go launch and round-trips random',
-    () async {
-      expect(await service.loadFallback(), FallbackStrategy.random);
+  test('fallback defaults to Star-point and round-trips Go values', () async {
+    expect(await service.loadFallback(), FallbackStrategy.goStarPoints);
 
-      // Only `random` is user-facing at Go launch.
-      await service.saveFallback(FallbackStrategy.random);
-      expect(await service.loadFallback(), FallbackStrategy.random);
-    },
-  );
-
-  test('fallback coerces non-user-facing values to Chaotic on read', () async {
-    // Connect-Four-shaped personalities still exist in the engine (benchmark
-    // use) but aren't surfaced; loadFallback silently coerces them. The same
-    // coercion catches `middleFocus` and any legacy persisted string that
-    // doesn't map to a current user-facing value.
+    // All five user-facing Go-mode values round-trip cleanly.
     for (final s in [
-      FallbackStrategy.pileFocus,
-      FallbackStrategy.ownPileAdjacent,
-      FallbackStrategy.greedyConnect,
-      FallbackStrategy.greedyConnectDefense,
-      FallbackStrategy.middleFocus,
+      FallbackStrategy.random,
+      FallbackStrategy.goStarPoints,
+      FallbackStrategy.goHugger,
+      FallbackStrategy.goContact,
+      FallbackStrategy.goGreedyArea,
     ]) {
       await service.saveFallback(s);
-      expect(await service.loadFallback(), FallbackStrategy.random);
+      expect(await service.loadFallback(), s);
     }
   });
 
-  test('fallback maps unknown / legacy stored value to Chaotic', () async {
+  test(
+    'fallback coerces non-user-facing CF values to Star-point on read',
+    () async {
+      // CF personalities still exist in the engine (benchmark use) but aren't
+      // surfaced in Go mode; loadFallback silently coerces them. Same
+      // coercion catches `middleFocus` and any legacy persisted string.
+      for (final s in [
+        FallbackStrategy.pileFocus,
+        FallbackStrategy.ownPileAdjacent,
+        FallbackStrategy.greedyConnect,
+        FallbackStrategy.greedyConnectDefense,
+        FallbackStrategy.middleFocus,
+      ]) {
+        await service.saveFallback(s);
+        expect(await service.loadFallback(), FallbackStrategy.goStarPoints);
+      }
+    },
+  );
+
+  test('fallback maps unknown / legacy stored value to Star-point', () async {
     // Simulate legacy data: write a string that no longer corresponds to any
     // enum value (like the removed `edgeFocus`).
     await service.db.insert('clone_config', {
       'key': 'fallback_personality',
       'value': 'edgeFocus',
     }, conflictAlgorithm: ConflictAlgorithm.replace);
-    expect(await service.loadFallback(), FallbackStrategy.random);
+    expect(await service.loadFallback(), FallbackStrategy.goStarPoints);
   });
 
   test('deleteAllData clears states and games', () async {
