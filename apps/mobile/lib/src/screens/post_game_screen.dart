@@ -12,11 +12,18 @@ class PostGameScreen extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final outcome = notifier.outcome;
     final (label, color) = switch (outcome) {
-      1 => ('YOU WIN', PiYingTheme.red),
-      -1 => ('CLONE WINS', PiYingTheme.yellow),
+      1 => ('YOU WIN', PiYingTheme.cinnabar),
+      -1 => ('CLONE WINS', PiYingTheme.onSurfaceMuted),
       0 => ('DRAW', PiYingTheme.onSurface),
       _ => ('', PiYingTheme.onSurface),
     };
+
+    // Live area readout for territory games. Computed from the current board
+    // (which is preserved through `resign`), not from persisted columns —
+    // resigns leave `player_area` / `clone_area` NULL by design but the live
+    // board still reflects what was on the screen at end-of-game.
+    final area = notifier.currentAreaScore;
+    final showArea = area != null && (area.player + area.clone) > 0;
 
     return Scaffold(
       body: SafeArea(
@@ -34,6 +41,17 @@ class PostGameScreen extends StatelessWidget {
                   letterSpacing: 4,
                 ),
               ),
+              if (showArea) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'AREA  ·  YOU ${area.player}  ·  CLONE ${area.clone}',
+                  textAlign: TextAlign.center,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: PiYingTheme.onSurfaceMuted,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               Text(
                 'game ${notifier.gamesPlayed}  ·  '
@@ -93,7 +111,7 @@ class _FinalThoughtBubble extends StatelessWidget {
           child: Text(
             "CLONE'S FINAL THOUGHT",
             style: textTheme.titleSmall?.copyWith(
-              color: PiYingTheme.blue,
+              color: PiYingTheme.lineColor,
               letterSpacing: 1.5,
             ),
           ),

@@ -12,7 +12,7 @@ GameState _state({
   Board? board,
   int materialBalance = 0,
 }) {
-  final b = board ?? Board(6, 7);
+  final b = board ?? Board(13, 13);
   // Distinct image so round-trip assertions can detect drift.
   final image = Int8List.fromList(
     List<int>.generate(b.rows * b.cols, (i) => ((i * 7) % 31) - 15),
@@ -63,16 +63,15 @@ void main() {
   });
 
   test('preserves non-empty board through blob round-trip', () async {
-    final board = Board.from(const [
-      [0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 1, 0, 0, 0],
-      [-1, 0, 1, -1, 1, 0, 0],
-    ]);
+    // Sparse 13×13 with stones at a few intersections.
+    final board = Board(13, 13);
+    board.set(6, 6, 1); // centre, white
+    board.set(6, 7, -1);
+    board.set(7, 6, -1);
+    board.set(0, 0, 1);
+    board.set(12, 12, -1);
     await service.insertGameState(
-      _state(gameId: 'g1', ply: 5, movePlayed: 2, board: board),
+      _state(gameId: 'g1', ply: 5, movePlayed: 6 * 13 + 6, board: board),
     );
 
     final loaded = await service.loadAllGameStates();
@@ -84,13 +83,13 @@ void main() {
     () async {
       await service.insertGame('g1');
       await service.insertGameState(
-        _state(gameId: 'g1', ply: 0, movePlayed: 3),
+        _state(gameId: 'g1', ply: 0, movePlayed: 6 * 13 + 6),
       );
       await service.insertGameState(
-        _state(gameId: 'g1', ply: 1, movePlayed: 4),
+        _state(gameId: 'g1', ply: 1, movePlayed: 6 * 13 + 7),
       );
       await service.insertGameState(
-        _state(gameId: 'g1', ply: 2, movePlayed: 3),
+        _state(gameId: 'g1', ply: 2, movePlayed: 7 * 13 + 6),
       );
 
       await service.backfillStates('g1', 1, 3);
@@ -118,39 +117,49 @@ void main() {
     expect(await service.getGamesPlayedCount(), 1);
   });
 
-  test(
-    'fallback defaults to Stacker and persists user-facing values',
-    () async {
-      expect(await service.loadFallback(), FallbackStrategy.pileFocus);
+  test('fallback defaults to Star-point and round-trips Go values', () async {
+    expect(await service.loadFallback(), FallbackStrategy.goStarPoints);
 
+    // All five user-facing Go-mode values round-trip cleanly.
+    for (final s in [
+      FallbackStrategy.random,
+      FallbackStrategy.goStarPoints,
+      FallbackStrategy.goHugger,
+      FallbackStrategy.goContact,
+      FallbackStrategy.goGreedyArea,
+    ]) {
+      await service.saveFallback(s);
+      expect(await service.loadFallback(), s);
+    }
+  });
+
+  test(
+    'fallback coerces non-user-facing CF values to Star-point on read',
+    () async {
+      // CF personalities still exist in the engine (benchmark use) but aren't
+      // surfaced in Go mode; loadFallback silently coerces them. Same
+      // coercion catches `middleFocus` and any legacy persisted string.
       for (final s in [
-        FallbackStrategy.random,
-        FallbackStrategy.ownPileAdjacent,
         FallbackStrategy.pileFocus,
+        FallbackStrategy.ownPileAdjacent,
         FallbackStrategy.greedyConnect,
         FallbackStrategy.greedyConnectDefense,
+        FallbackStrategy.middleFocus,
       ]) {
         await service.saveFallback(s);
-        expect(await service.loadFallback(), s);
+        expect(await service.loadFallback(), FallbackStrategy.goStarPoints);
       }
     },
   );
 
-  test('fallback maps hidden middleFocus value to Stacker on read', () async {
-    // middleFocus is still in the engine enum (benchmark-only) but isn't
-    // exposed in the slider; loadFallback should silently coerce it.
-    await service.saveFallback(FallbackStrategy.middleFocus);
-    expect(await service.loadFallback(), FallbackStrategy.pileFocus);
-  });
-
-  test('fallback maps unknown / legacy stored value to Stacker', () async {
+  test('fallback maps unknown / legacy stored value to Star-point', () async {
     // Simulate legacy data: write a string that no longer corresponds to any
     // enum value (like the removed `edgeFocus`).
     await service.db.insert('clone_config', {
       'key': 'fallback_personality',
       'value': 'edgeFocus',
     }, conflictAlgorithm: ConflictAlgorithm.replace);
-    expect(await service.loadFallback(), FallbackStrategy.pileFocus);
+    expect(await service.loadFallback(), FallbackStrategy.goStarPoints);
   });
 
   test('deleteAllData clears states and games', () async {
@@ -273,4 +282,63 @@ void main() {
       expect(g2Rows.first.materialBalance, 0);
     },
   );
+
+  group('area-score persistence (v6)', () {
+    test('updateGameAreaScore round-trips via loadRecentGames', () async {
+      await service.insertGame('g1');
+      await service.updateGameOutcome('g1', 1, 80);
+      await service.updateGameAreaScore('g1', 96, 73);
+
+      final recent = await service.loadRecentGames();
+      expect(recent, hasLength(1));
+      expect(recent.first.outcome, 1);
+      expect(recent.first.playerArea, 96);
+      expect(recent.first.cloneArea, 73);
+    });
+
+    test(
+      'loadRecentGames orders most-recent-first and skips ongoing',
+      () async {
+        await service.insertGame('older');
+        await service.updateGameOutcome('older', 1, 50);
+        await service.updateGameAreaScore('older', 70, 30);
+        // Force a started_at gap so order is deterministic.
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        await service.insertGame('newer');
+        await service.updateGameOutcome('newer', -1, 80);
+        await service.updateGameAreaScore('newer', 40, 60);
+        // Ongoing — must not appear in the results.
+        await service.insertGame('ongoing');
+
+        final recent = await service.loadRecentGames();
+        expect(recent.map((g) => g.outcome), [-1, 1]);
+        expect(recent.first.playerArea, 40);
+        expect(recent.first.cloneArea, 60);
+      },
+    );
+
+    test('loadRecentGames surfaces NULL area for resigned games', () async {
+      await service.insertGame('resigned');
+      // Resign path: outcome set, area NEVER persisted.
+      await service.updateGameOutcome('resigned', -1, 12);
+
+      final recent = await service.loadRecentGames();
+      expect(recent, hasLength(1));
+      expect(recent.first.outcome, -1);
+      expect(recent.first.playerArea, isNull);
+      expect(recent.first.cloneArea, isNull);
+    });
+
+    test('loadRecentGames honours limit', () async {
+      for (var i = 0; i < 5; i++) {
+        final id = 'g$i';
+        await service.insertGame(id);
+        await service.updateGameOutcome(id, 1, 10);
+        await service.updateGameAreaScore(id, 50, 50);
+        await Future<void>.delayed(const Duration(milliseconds: 2));
+      }
+      final recent = await service.loadRecentGames(limit: 3);
+      expect(recent, hasLength(3));
+    });
+  });
 }

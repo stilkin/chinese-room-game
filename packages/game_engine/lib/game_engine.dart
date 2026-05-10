@@ -8,3 +8,4 @@ export 'src/move_selection.dart';
 export 'src/narration.dart';
 export 'src/similarity.dart';
 export 'src/games/connect_four.dart';
+export 'src/games/go.dart';

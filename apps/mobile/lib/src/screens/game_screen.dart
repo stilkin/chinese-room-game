@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:game_engine/game_engine.dart';
 
 import '../app_scope.dart';
 import '../state/game_notifier.dart';
 import '../theme.dart';
-import '../widgets/board_painter.dart';
+import '../widgets/go_board.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
@@ -13,49 +12,26 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen>
-    with SingleTickerProviderStateMixin {
+class _GameScreenState extends State<GameScreen> {
   GameNotifier? _notifier;
-
-  // Drop-animation state.
-  late final AnimationController _dropController;
-  int _animatedMoveCounter = 0; // last move counter the animation ran for
-  bool _isDropAnimating = false;
+  // Latch so the post-game navigation fires once even if `notifyListeners`
+  // is invoked again before we've navigated away (narration update,
+  // isCloneThinking flips, etc.).
   bool _postGameNavScheduled = false;
 
   void _onChange() {
     if (!mounted) return;
     final n = _notifier;
     if (n == null) return;
-    // Trigger drop animation when a new move arrives.
-    if (n.moveCounter != _animatedMoveCounter && n.lastMoveRow >= 0) {
-      _animatedMoveCounter = n.moveCounter;
-      _isDropAnimating = true;
-      _dropController.forward(from: 0).whenComplete(() {
-        if (!mounted) return;
-        setState(() => _isDropAnimating = false);
-      });
-    }
-    // Latch so subsequent notifyListeners() calls (narration update,
-    // isCloneThinking flips, etc.) don't enqueue a second navigation.
     if (n.outcome != null && !_postGameNavScheduled) {
       _postGameNavScheduled = true;
-      // Brief pause on the game screen so the player sees the winning chip
-      // and the highlight before navigating to post-game.
+      // Brief pause on the game screen so the player sees the final board
+      // and last-move ring before navigating to post-game.
       Future.delayed(const Duration(milliseconds: 1200), () {
         if (!mounted) return;
         Navigator.pushReplacementNamed(context, '/post-game');
       });
     }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _dropController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 280),
-    );
   }
 
   @override
@@ -66,15 +42,11 @@ class _GameScreenState extends State<GameScreen>
       _notifier?.removeListener(_onChange);
       next.addListener(_onChange);
       _notifier = next;
-      // Sync the move counter so a fresh game (or resume) doesn't replay an
-      // animation for moves that happened off-screen.
-      _animatedMoveCounter = next.moveCounter;
     }
   }
 
   @override
   void dispose() {
-    _dropController.dispose();
     _notifier?.removeListener(_onChange);
     super.dispose();
   }
@@ -82,12 +54,9 @@ class _GameScreenState extends State<GameScreen>
   @override
   Widget build(BuildContext context) {
     final notifier = _notifier!;
-    final cols = notifier.rules.cols;
-    final rows = notifier.rules.rows;
-    final rules = notifier.rules;
-    final winningCells = (rules is ConnectFourRules && notifier.outcome != null)
-        ? rules.findWinningCells(notifier.displayBoard)
-        : null;
+    final canTap = !notifier.isCloneThinking && notifier.outcome == null;
+    final canResign = notifier.outcome == null && notifier.hasOngoingGame;
+    final score = notifier.currentAreaScore;
 
     return Scaffold(
       appBar: AppBar(title: const Text('PI-YING')),
@@ -101,82 +70,92 @@ class _GameScreenState extends State<GameScreen>
                 isCloneThinking: notifier.isCloneThinking,
                 outcome: notifier.outcome,
               ),
+              if (score != null) ...[
+                const SizedBox(height: 6),
+                _AreaScoreLine(player: score.player, clone: score.clone),
+              ],
               const SizedBox(height: 12),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final width = constraints.maxWidth;
-                  final cellSize = cellSizeFor(width, cols);
-                  final height = cellSize * rows;
-                  final size = Size(width, height);
-                  return GestureDetector(
-                    onTapUp: (details) {
-                      // Block taps while a chip is mid-drop or it's not the
-                      // player's turn — prevents stacking animations and
-                      // double-fires.
-                      if (_isDropAnimating ||
-                          notifier.isCloneThinking ||
-                          notifier.outcome != null) {
-                        return;
-                      }
-                      final col = columnFromTap(
-                        details.localPosition,
-                        size,
-                        cols,
-                      );
-                      if (col != null) notifier.playerMove(col);
-                    },
-                    child: SizedBox(
-                      width: width,
-                      height: height,
-                      child: Stack(
-                        children: [
-                          // Static board — exclude the most recent chip while
-                          // its drop animation is running so we don't see two
-                          // chips at the same cell.
-                          CustomPaint(
-                            size: size,
-                            painter: BoardPainter(
-                              notifier.displayBoard,
-                              excludeRow: _isDropAnimating
-                                  ? notifier.lastMoveRow
-                                  : null,
-                              excludeCol: _isDropAnimating
-                                  ? notifier.lastMoveCol
-                                  : null,
-                              winningCells: winningCells,
-                            ),
-                          ),
-                          // Animated chip falling into place.
-                          if (_isDropAnimating)
-                            AnimatedBuilder(
-                              animation: _dropController,
-                              builder: (context, _) {
-                                return CustomPaint(
-                                  size: size,
-                                  painter: _DropOverlayPainter(
-                                    progress: Curves.easeIn.transform(
-                                      _dropController.value,
-                                    ),
-                                    landingRow: notifier.lastMoveRow,
-                                    col: notifier.lastMoveCol,
-                                    side: notifier.lastMoveSide,
-                                    cellSize: cellSize,
-                                  ),
-                                );
-                              },
-                            ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
+              AspectRatio(
+                aspectRatio: 1,
+                child: GoBoard(
+                  board: notifier.displayBoard,
+                  lastMoveRow: notifier.lastMoveRow,
+                  lastMoveCol: notifier.lastMoveCol,
+                  onTap: canTap ? notifier.playerMove : null,
+                ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _PassButton(onPressed: canTap ? notifier.pass : null),
+                  _ResignButton(
+                    onPressed: canResign
+                        ? () => _confirmResign(context, notifier)
+                        : null,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
               _NarrationBubble(
                 text: notifier.narration.isEmpty ? '...' : notifier.narration,
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmResign(
+    BuildContext context,
+    GameNotifier notifier,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Resign?'),
+        content: const Text(
+          'Concede the game. The clone wins. The result is recorded as a loss.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: PiYingTheme.cinnabar,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Resign'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await notifier.resign();
+    }
+  }
+}
+
+/// Compact "AREA YOU 27 CLONE 22" line under the status banner. Mid-game the
+/// numbers are noisy because most empty intersections are dame, but the trend
+/// gives the player a sense of who's gaining territory.
+class _AreaScoreLine extends StatelessWidget {
+  final int player;
+  final int clone;
+  const _AreaScoreLine({required this.player, required this.clone});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Center(
+      child: Text(
+        'AREA  YOU $player  CLONE $clone',
+        style: textTheme.bodySmall?.copyWith(
+          color: PiYingTheme.onSurfaceMuted,
+          letterSpacing: 1.5,
         ),
       ),
     );
@@ -195,15 +174,50 @@ class _StatusBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final (label, color) = outcome != null
-        ? ('GAME OVER', PiYingTheme.amber)
+        ? ('GAME OVER', PiYingTheme.cinnabar)
         : isCloneThinking
         ? ('CLONE THINKING…', PiYingTheme.onSurfaceMuted)
-        : ('YOUR TURN', PiYingTheme.cyan);
+        : ('YOUR TURN', PiYingTheme.onSurface);
     return Center(
       child: Text(
         label,
         style: textTheme.titleSmall?.copyWith(color: color, letterSpacing: 2),
       ),
+    );
+  }
+}
+
+class _PassButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  const _PassButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        side: const BorderSide(color: PiYingTheme.outline, width: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      ),
+      child: const Text('PASS', style: TextStyle(letterSpacing: 2)),
+    );
+  }
+}
+
+class _ResignButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  const _ResignButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        side: const BorderSide(color: PiYingTheme.cinnabar, width: 2),
+        foregroundColor: PiYingTheme.cinnabar,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      ),
+      child: const Text('RESIGN', style: TextStyle(letterSpacing: 2)),
     );
   }
 }
@@ -259,8 +273,6 @@ class _BubbleTailPainter extends CustomPainter {
       ..lineTo(size.width, size.height)
       ..close();
     canvas.drawPath(path, fill);
-    // Stroke only the two slanted sides; the bottom edge sits flush against
-    // the bubble's top border, where the bubble already has a 2px outline.
     final sidesOnly = Path()
       ..moveTo(0, size.height)
       ..lineTo(size.width / 2, 0)
@@ -270,44 +282,4 @@ class _BubbleTailPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_BubbleTailPainter oldDelegate) => false;
-}
-
-/// Renders the in-flight chip falling from above the board down to its
-/// landing cell. The static board (passed to BoardPainter) is rendered with
-/// that cell excluded while this overlay is active, so there's never a
-/// double-chip.
-class _DropOverlayPainter extends CustomPainter {
-  final double progress; // 0..1
-  final int landingRow;
-  final int col;
-  final int side;
-  final double cellSize;
-
-  _DropOverlayPainter({
-    required this.progress,
-    required this.landingRow,
-    required this.col,
-    required this.side,
-    required this.cellSize,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (landingRow < 0) return;
-    final radius = cellSize * 0.4;
-    // Start above the top of the board — chip should appear to fall from
-    // off-screen, into row 0, and continue down to the landing row.
-    final cx = col * cellSize + cellSize / 2;
-    final startCy = -cellSize / 2;
-    final endCy = landingRow * cellSize + cellSize / 2;
-    final cy = startCy + (endCy - startCy) * progress;
-    BoardPainter.paintFloatingChip(canvas, Offset(cx, cy), radius, side);
-  }
-
-  @override
-  bool shouldRepaint(_DropOverlayPainter old) =>
-      old.progress != progress ||
-      old.landingRow != landingRow ||
-      old.col != col ||
-      old.side != side;
 }

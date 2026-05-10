@@ -1,4 +1,6 @@
 import 'dart:math';
+import 'dart:typed_data';
+
 import 'package:test/test.dart';
 import 'package:game_engine/game_engine.dart';
 
@@ -257,6 +259,260 @@ void main() {
       final c = connector.selectMove(board, 1);
       final s = sentinel.selectMove(board, 1);
       expect(s.move, c.move);
+    });
+  });
+
+  // Go fallbacks need a GoRules instance, not the CF `rules` from setUp.
+  // Build a fresh brain per test so log state never leaks between tests.
+  CloneBrain buildGoBrain(
+    FallbackStrategy strategy, {
+    Random? random,
+    int size = 13,
+  }) => CloneBrain(
+    rules: GoRules(size: size),
+    log: GameLog(),
+    fallback: strategy,
+    random: random ?? Random(42),
+  );
+
+  group('Go Star-point fallback', () {
+    test('empty board picks one of the nine hoshi (weight 3)', () {
+      final brain = buildGoBrain(FallbackStrategy.goStarPoints);
+      final decision = brain.selectMove(Board(13, 13), 1);
+      const hoshi = {
+        3 * 13 + 3,
+        3 * 13 + 6,
+        3 * 13 + 9,
+        6 * 13 + 3,
+        6 * 13 + 6,
+        6 * 13 + 9,
+        9 * 13 + 3,
+        9 * 13 + 6,
+        9 * 13 + 9,
+      };
+      expect(hoshi.contains(decision.move), true);
+    });
+
+    test('passMove is excluded even when legal', () {
+      final brain = buildGoBrain(FallbackStrategy.goStarPoints);
+      final board = Board(13, 13);
+      final decision = brain.selectMove(board, 1);
+      // 169 is the pass sentinel for size=13.
+      expect(decision.move, isNot(169));
+    });
+  });
+
+  group('Go Hugger fallback', () {
+    test('empty board falls through to Star-point (hoshi opener)', () {
+      final brain = buildGoBrain(FallbackStrategy.goHugger);
+      final decision = brain.selectMove(Board(13, 13), 1);
+      const hoshi = {
+        3 * 13 + 3,
+        3 * 13 + 6,
+        3 * 13 + 9,
+        6 * 13 + 3,
+        6 * 13 + 6,
+        6 * 13 + 9,
+        9 * 13 + 3,
+        9 * 13 + 6,
+        9 * 13 + 9,
+      };
+      expect(hoshi.contains(decision.move), true);
+    });
+
+    test('one own stone at tengen → picks one of its four neighbours', () {
+      final brain = buildGoBrain(FallbackStrategy.goHugger);
+      final board = Board(13, 13);
+      board.set(6, 6, 1);
+      final decision = brain.selectMove(board, 1);
+      const neighbours = {5 * 13 + 6, 7 * 13 + 6, 6 * 13 + 5, 6 * 13 + 7};
+      expect(neighbours.contains(decision.move), true);
+    });
+
+    test(
+      'two own stones with one shared empty neighbour → picks shared cell',
+      () {
+        final brain = buildGoBrain(FallbackStrategy.goHugger);
+        final board = Board(13, 13);
+        // Stones at (6,5) and (6,7) — the empty cell at (6,6) touches both
+        // (score 2). Every other cell touches at most one (score ≤ 1).
+        board.set(6, 5, 1);
+        board.set(6, 7, 1);
+        final decision = brain.selectMove(board, 1);
+        expect(decision.move, 6 * 13 + 6);
+      },
+    );
+  });
+
+  group('Go Contact fallback', () {
+    test('empty board falls through to Star-point', () {
+      final brain = buildGoBrain(FallbackStrategy.goContact);
+      final decision = brain.selectMove(Board(13, 13), 1);
+      const hoshi = {
+        3 * 13 + 3,
+        3 * 13 + 6,
+        3 * 13 + 9,
+        6 * 13 + 3,
+        6 * 13 + 6,
+        6 * 13 + 9,
+        9 * 13 + 3,
+        9 * 13 + 6,
+        9 * 13 + 9,
+      };
+      expect(hoshi.contains(decision.move), true);
+    });
+
+    test('one enemy stone at tengen → picks one of its four neighbours', () {
+      final brain = buildGoBrain(FallbackStrategy.goContact);
+      final board = Board(13, 13);
+      board.set(6, 6, -1);
+      final decision = brain.selectMove(board, 1);
+      const neighbours = {5 * 13 + 6, 7 * 13 + 6, 6 * 13 + 5, 6 * 13 + 7};
+      expect(neighbours.contains(decision.move), true);
+    });
+
+    test(
+      'mixed friendly + enemy → picks enemy-adjacent, ignoring friendly',
+      () {
+        final brain = buildGoBrain(FallbackStrategy.goContact);
+        final board = Board(13, 13);
+        // Two friendlies at (3,3) and (3,4) — Hugger would happily play (3,2)
+        // or (3,5). Contact ignores friendlies; one enemy at (9,9) is the only
+        // stone with a positive enemy-neighbour score, so Contact plays one of
+        // its four neighbours.
+        board.set(3, 3, 1);
+        board.set(3, 4, 1);
+        board.set(9, 9, -1);
+        final decision = brain.selectMove(board, 1);
+        const enemyNeighbours = {
+          8 * 13 + 9,
+          10 * 13 + 9,
+          9 * 13 + 8,
+          9 * 13 + 10,
+        };
+        expect(enemyNeighbours.contains(decision.move), true);
+      },
+    );
+  });
+
+  group('Go Greedy fallback', () {
+    test('empty board falls through to Star-point (prefilter empty)', () {
+      final brain = buildGoBrain(FallbackStrategy.goGreedyArea);
+      final decision = brain.selectMove(Board(13, 13), 1);
+      const hoshi = {
+        3 * 13 + 3,
+        3 * 13 + 6,
+        3 * 13 + 9,
+        6 * 13 + 3,
+        6 * 13 + 6,
+        6 * 13 + 9,
+        9 * 13 + 3,
+        9 * 13 + 6,
+        9 * 13 + 9,
+      };
+      expect(hoshi.contains(decision.move), true);
+    });
+
+    test('move that captures a single enemy stone is preferred', () {
+      final brain = buildGoBrain(FallbackStrategy.goGreedyArea);
+      final board = Board(13, 13);
+      // Single black stone at (6,6) with three of its four neighbours already
+      // own-coloured (white). Playing the fourth neighbour at (5,6) captures
+      // black and removes a stone — area diff swings hard for white. Other
+      // legal candidates in the prefilter set (the friendlies' free
+      // neighbours) don't capture and have a much smaller diff.
+      board.set(6, 6, -1);
+      board.set(7, 6, 1); // south of black
+      board.set(6, 5, 1); // west of black
+      board.set(6, 7, 1); // east of black
+      final decision = brain.selectMove(board, 1);
+      expect(decision.move, 5 * 13 + 6);
+    });
+
+    test('candidates far from any stone are excluded by prefilter', () {
+      // With one white stone at (0,0), the prefilter set is exactly its
+      // three legal neighbours: (0,1), (1,0), (1,1)? — actually only the
+      // 4-orthogonal neighbours: (0,1) and (1,0). Greedy must pick one of
+      // those, never an isolated cell at e.g. tengen.
+      final brain = buildGoBrain(FallbackStrategy.goGreedyArea);
+      final board = Board(13, 13);
+      board.set(0, 0, 1);
+      final decision = brain.selectMove(board, 1);
+      expect(decision.move == 0 * 13 + 1 || decision.move == 1 * 13 + 0, true);
+    });
+  });
+
+  group('Go opponent-passed self-fill override', () {
+    // Build a 5×5 board where every empty interior cell is bounded only by
+    // white stones — pure own-enclosed territory. With the player just having
+    // passed, the brain SHALL override the fallback's chosen move to passMove.
+    Board enclosedBoard() => Board.from([
+      [1, 1, 1, 1, 1],
+      [1, 0, 0, 0, 1],
+      [1, 0, 1, 0, 1],
+      [1, 0, 0, 0, 1],
+      [1, 1, 1, 1, 1],
+    ]);
+
+    GameState passState(GoRules rules, int ply) => GameState(
+      board: Board(rules.size, rules.size),
+      diffusedImage: Int8List(rules.size * rules.size),
+      movePlayed: rules.passMove,
+      ply: ply,
+      gameId: 'g',
+      totalMaterial: 0,
+      materialBalance: 0,
+    );
+
+    test('overrides Star-point fallback to pass when opponent just passed', () {
+      final rules = GoRules(size: 5);
+      final log = GameLog()..addState(passState(rules, 0));
+      final brain = CloneBrain(
+        rules: rules,
+        log: log,
+        fallback: FallbackStrategy.goStarPoints,
+        random: Random(42),
+      );
+      final decision = brain.selectMove(enclosedBoard(), 1);
+      expect(decision.move, rules.passMove);
+      expect(decision.narration, contains('nothing left'));
+    });
+
+    test('does NOT override when opponent has not passed', () {
+      // Same enclosed board but no pass state in the log → bot picks a real
+      // placement, even though it lands in own-enclosed territory.
+      final rules = GoRules(size: 5);
+      final brain = CloneBrain(
+        rules: rules,
+        log: GameLog(),
+        fallback: FallbackStrategy.goStarPoints,
+        random: Random(42),
+      );
+      final decision = brain.selectMove(enclosedBoard(), 1);
+      expect(decision.move, isNot(rules.passMove));
+    });
+
+    test('does NOT override when chosen move borders enemy stones', () {
+      // Two friendly stones at top-left and one enemy stone inside what would
+      // otherwise be own-territory. The empty region touches the enemy → not
+      // enclosed → bot still plays.
+      final rules = GoRules(size: 5);
+      final log = GameLog()..addState(passState(rules, 0));
+      final brain = CloneBrain(
+        rules: rules,
+        log: log,
+        fallback: FallbackStrategy.goStarPoints,
+        random: Random(42),
+      );
+      final board = Board.from([
+        [1, 1, 1, 1, 1],
+        [1, 0, 0, 0, 1],
+        [1, 0, -1, 0, 1],
+        [1, 0, 0, 0, 1],
+        [1, 1, 1, 1, 1],
+      ]);
+      final decision = brain.selectMove(board, 1);
+      expect(decision.move, isNot(rules.passMove));
     });
   });
 

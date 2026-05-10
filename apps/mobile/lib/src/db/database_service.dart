@@ -8,8 +8,13 @@ import 'package:sqflite/sqflite.dart';
 import 'board_codec.dart';
 
 const _kDbName = 'pi_ying.db';
-const _kSchemaVersion = 3;
+const _kSchemaVersion = 6;
 const _kFallbackKey = 'fallback';
+
+/// One row of the recent-games loader. `playerArea` and `cloneArea` are
+/// nullable so resigned games and pre-v6 legacy rows can surface as DNF
+/// (the strip widget renders those as a muted bar).
+typedef RecentGame = ({int outcome, int? playerArea, int? cloneArea});
 
 const _kCreateGameStatesV3 = '''
   CREATE TABLE game_states (
@@ -57,7 +62,9 @@ class DatabaseService {
               game_id TEXT PRIMARY KEY,
               started_at INTEGER NOT NULL,
               outcome INTEGER,
-              total_moves INTEGER
+              total_moves INTEGER,
+              player_area INTEGER,
+              clone_area INTEGER
             )
           ''');
           await db.execute(_kCreateGameStatesV3);
@@ -75,12 +82,16 @@ class DatabaseService {
           ''');
         },
         onUpgrade: (db, oldVersion, newVersion) async {
-          // v1 → v2 was schema-incompatible (per-row perspective → winner-POV).
-          // v2 → v3 is also schema-incompatible (bit-hash column → quantized
-          // image column; bit-hash data isn't comparable under L1). Either
-          // upgrade is destructive: drop game_states, clear games, leave
-          // clone_config alone. Indices are recreated.
-          if (oldVersion < 3) {
+          // Migration history:
+          // v1→v2 changed perspective convention (per-row → winner-POV).
+          // v2→v3 swapped bit-hash for quantized images.
+          // v3→v4 swapped the active game from Connect Four to Go (13×13).
+          // v4→v5 was a rebrand wipe (Pi-Ying / 皮影).
+          // v5→v6 is *additive*: two nullable columns on `games` for the
+          //       per-game Chinese-style area score. We deliberately keep
+          //       prior history rather than wiping — legacy rows surface as
+          //       muted "DNF" entries in the new home-screen strip.
+          if (oldVersion < 5) {
             await db.execute('DROP TABLE IF EXISTS game_states');
             await db.execute(_kCreateGameStatesV3);
             await db.execute(
@@ -90,6 +101,12 @@ class DatabaseService {
               'CREATE INDEX idx_game_states_filter ON game_states(total_material, material_balance)',
             );
             await db.delete('games');
+          }
+          if (oldVersion < 6) {
+            await db.execute(
+              'ALTER TABLE games ADD COLUMN player_area INTEGER',
+            );
+            await db.execute('ALTER TABLE games ADD COLUMN clone_area INTEGER');
           }
         },
       ),
@@ -182,6 +199,17 @@ class DatabaseService {
     });
   }
 
+  /// Removes a game's per-position rows from `game_states` but leaves its
+  /// `games` row alone. Used by the resign path: the resigned game still
+  /// counts in win/loss statistics (the games row carries `outcome=-1`),
+  /// but its stored positions don't enter the CBR candidate pool — resigning
+  /// is a "I'm giving up" signal, not a "this position is a confirmed clone
+  /// win" one, and learning from those positions would teach the brain
+  /// false patterns.
+  Future<void> deleteStatesForGame(String gameId) async {
+    await db.delete('game_states', where: 'game_id = ?', whereArgs: [gameId]);
+  }
+
   Future<void> replaceAllStatesForGameAtomic(
     String gameId,
     List<GameState> replacements,
@@ -242,19 +270,42 @@ class DatabaseService {
     return (rows.first['c'] as int?) ?? 0;
   }
 
-  /// Returns up to [limit] completed games' outcomes ordered most-recent-last
-  /// (so a UI can render them left-to-right as a timeline). Each entry is the
-  /// game's `outcome` column: `+1` (player won), `-1` (clone won), `0` (draw).
-  Future<List<int>> loadRecentOutcomes({int limit = 100}) async {
+  /// Returns up to [limit] completed games' outcome + area, ordered
+  /// most-recent-first so the home-screen strip can render newest-on-top.
+  /// `playerArea` / `cloneArea` are null for resigned games and for any
+  /// row created prior to schema v6 — the strip renders those as DNF rows.
+  Future<List<RecentGame>> loadRecentGames({int limit = 100}) async {
     final rows = await db.query(
       'games',
-      columns: ['outcome'],
+      columns: ['outcome', 'player_area', 'clone_area'],
       where: 'outcome IS NOT NULL',
       orderBy: 'started_at DESC',
       limit: limit,
     );
-    // Reverse so caller receives oldest-first within the window.
-    return rows.reversed.map((r) => r['outcome'] as int).toList();
+    return [
+      for (final r in rows)
+        (
+          outcome: r['outcome'] as int,
+          playerArea: r['player_area'] as int?,
+          cloneArea: r['clone_area'] as int?,
+        ),
+    ];
+  }
+
+  /// Persist the final Chinese-style area score against the game's row.
+  /// Called from the natural game-end funnel (two passes / agree-to-pass);
+  /// resigns deliberately skip this call so the columns stay NULL.
+  Future<void> updateGameAreaScore(
+    String gameId,
+    int playerArea,
+    int cloneArea,
+  ) async {
+    await db.update(
+      'games',
+      {'player_area': playerArea, 'clone_area': cloneArea},
+      where: 'game_id = ?',
+      whereArgs: [gameId],
+    );
   }
 
   /// Aggregate win/loss/draw counts across all completed games.
@@ -286,18 +337,21 @@ class DatabaseService {
     );
   }
 
-  /// User-facing fallback strategies (the slider exposes exactly these). Any
-  /// persisted value not in this set — including legacy `edgeFocus` (now
-  /// removed) and `middleFocus` (still in the engine for benchmark use only)
-  /// — is silently mapped to the default.
+  /// User-facing fallback strategies for Go mode. The Connect-Four-shaped
+  /// personalities (`pileFocus`, `ownPileAdjacent`, `greedyConnect`,
+  /// `greedyConnectDefense`, `middleFocus`) live on in the engine for
+  /// benchmark use but are not surfaced via the slider. Any persisted value
+  /// not in this set is silently mapped to the default. Default is Star-point
+  /// — Hugger lost 0/100 to Chaotic in the round-robin gate, so Star-point
+  /// (textbook Go opening) takes the mid-of-slider default seat.
   static const _kUserFacingFallbacks = {
     FallbackStrategy.random,
-    FallbackStrategy.ownPileAdjacent,
-    FallbackStrategy.pileFocus,
-    FallbackStrategy.greedyConnect,
-    FallbackStrategy.greedyConnectDefense,
+    FallbackStrategy.goStarPoints,
+    FallbackStrategy.goHugger,
+    FallbackStrategy.goContact,
+    FallbackStrategy.goGreedyArea,
   };
-  static const _kDefaultFallback = FallbackStrategy.pileFocus;
+  static const _kDefaultFallback = FallbackStrategy.goStarPoints;
 
   Future<FallbackStrategy> loadFallback() async {
     final rows = await db.query(

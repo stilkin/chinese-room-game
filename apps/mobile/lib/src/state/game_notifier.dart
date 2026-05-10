@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:game_engine/game_engine.dart';
 
 import '../db/database_service.dart';
@@ -22,11 +24,12 @@ class GameNotifier extends ChangeNotifier {
   int _playerWins = 0;
   int _cloneWins = 0;
   int _draws = 0;
-  List<int> _recentOutcomes = const [];
+  List<RecentGame> _recentGames = const [];
   FallbackStrategy _fallback;
   bool _hasOngoingGame = false;
-  // Latest move info — used by the UI to animate the most recent piece
-  // dropping in. -1 when no move has been made yet (start of a game).
+  // Latest move's intersection — used by the UI to highlight the most recent
+  // placement with a small ring. -1 when no move has been made yet (start of
+  // a game) or when the most recent move was a pass.
   int _lastMoveRow = -1;
   int _lastMoveCol = -1;
   int _lastMoveSide = 0;
@@ -49,7 +52,9 @@ class GameNotifier extends ChangeNotifier {
   int get playerWins => _playerWins;
   int get cloneWins => _cloneWins;
   int get draws => _draws;
-  List<int> get recentOutcomes => _recentOutcomes;
+  // Unmodifiable view — consumers must go through setFallback / game-flow
+  // mutators, not mutate the list under the notifier's feet.
+  List<RecentGame> get recentGames => UnmodifiableListView(_recentGames);
   bool get isCloneThinking => _isCloneThinking;
   bool get isPlayerTurn =>
       _currentSide == 1 && _outcome == null && !_isCloneThinking;
@@ -82,7 +87,7 @@ class GameNotifier extends ChangeNotifier {
     _playerWins = stats.playerWins;
     _cloneWins = stats.cloneWins;
     _draws = stats.draws;
-    _recentOutcomes = await db.loadRecentOutcomes();
+    _recentGames = await db.loadRecentGames();
   }
 
   Future<void> startNewGame() async {
@@ -148,23 +153,31 @@ class GameNotifier extends ChangeNotifier {
     }
   }
 
-  Future<void> playerMove(int col) async {
+  Future<void> playerMove(int move) async {
     if (_outcome != null || _currentSide != 1 || _isCloneThinking) return;
-    if (!rules.legalMoves(_displayBoard).contains(col)) return;
+    final legal = rules.legalMoves(_displayBoard, side: 1, log: log);
+    if (!legal.contains(move)) {
+      // Tap registered but the move is illegal (occupied, suicide, ko).
+      // A short selection click confirms the tap landed on something
+      // tappable without misleading the user into thinking a move played.
+      HapticFeedback.selectionClick();
+      return;
+    }
+    HapticFeedback.lightImpact();
 
     // Synchronous state mutation: anything below sees turn already flipped.
-    final state = _applySync(col, 1);
+    final state = _applySync(move, 1);
     _currentSide = -1;
-    final winner = rules.checkWinner(_displayBoard);
-    if (winner == null) {
+    final terminal = rules.isTerminal(_displayBoard, log: log);
+    if (!terminal) {
       _isCloneThinking = true;
     }
     notifyListeners();
 
     await db.insertGameState(state);
 
-    if (winner != null) {
-      await _endGame(winner);
+    if (terminal) {
+      await _endGame(rules.finalOutcome(_displayBoard));
       notifyListeners();
       return;
     }
@@ -172,15 +185,38 @@ class GameNotifier extends ChangeNotifier {
     scheduleMicrotask(_cloneTurn);
   }
 
+  /// Player passes their turn. Currently Go-only; CF doesn't support passing
+  /// and the call no-ops there. Returns silently if it's not the player's
+  /// turn or the game is already over.
+  Future<void> pass() async {
+    final pm = _passMove;
+    if (pm == null) return;
+    await playerMove(pm);
+  }
+
   Future<void> _cloneTurn() async {
+    // Visible "thinking" pause: without this, the bot's stone (and any
+    // captures it triggers) appears on the same frame as the player's move
+    // resolves, reading as a flicker rather than a turn. 250ms is the
+    // minimum-perceptible-pause for cause-and-effect in UI animation
+    // research; tunable.
+    final scheduledGameId = _gameId;
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    // Re-check liveness after the delay. resign(), deleteAllData(), and
+    // startNewGame() can all fire during the 250ms window; without this
+    // guard the bot would apply a move into an already-resigned or
+    // freshly-replaced game and persist a stranded state row. The flag
+    // `_isCloneThinking` is already reset by each of those paths, so a
+    // bare `return` is sufficient.
+    if (_outcome != null || _gameId != scheduledGameId) return;
     final decision = _brain.selectMove(_displayBoard, -1);
     _narration = decision.narration;
     final state = _applySync(decision.move, -1);
     await db.insertGameState(state);
 
-    final winner = rules.checkWinner(_displayBoard);
-    if (winner != null) {
-      await _endGame(winner);
+    final terminal = rules.isTerminal(_displayBoard, log: log);
+    if (terminal) {
+      await _endGame(rules.finalOutcome(_displayBoard));
     } else {
       _currentSide = 1;
     }
@@ -188,23 +224,42 @@ class GameNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  GameState _applySync(int col, int side) {
-    _displayBoard = rules.applyMove(_displayBoard, col, side);
-    // Find the row the new piece landed on so the UI can animate the drop.
-    var landingRow = -1;
+  GameState _applySync(int move, int side) {
+    // Capture detection: count opposing stones before and after applyMove.
+    // Any decrement is captured stones — fire a medium haptic so the user
+    // viscerally registers the board event regardless of which side acted.
+    final opponent = -side;
+    var beforeOpponent = 0;
     for (var r = 0; r < _displayBoard.rows; r++) {
-      if (_displayBoard.get(r, col) == side) {
-        landingRow = r;
-        break;
+      for (var c = 0; c < _displayBoard.cols; c++) {
+        if (_displayBoard.get(r, c) == opponent) beforeOpponent++;
       }
     }
-    _lastMoveRow = landingRow;
-    _lastMoveCol = col;
+    _displayBoard = rules.applyMove(_displayBoard, move, side);
+    var afterOpponent = 0;
+    for (var r = 0; r < _displayBoard.rows; r++) {
+      for (var c = 0; c < _displayBoard.cols; c++) {
+        if (_displayBoard.get(r, c) == opponent) afterOpponent++;
+      }
+    }
+    if (afterOpponent < beforeOpponent) {
+      HapticFeedback.mediumImpact();
+    }
+    final r = move ~/ rules.cols;
+    final c = move % rules.cols;
+    if (r >= 0 && r < rules.rows) {
+      _lastMoveRow = r;
+      _lastMoveCol = c;
+    } else {
+      // Non-board move (e.g. Go pass). The widget treats -1 as "no highlight".
+      _lastMoveRow = -1;
+      _lastMoveCol = -1;
+    }
     _lastMoveSide = side;
     _moveCounter += 1;
     final state = _brain.createState(
       board: _displayBoard,
-      movePlayed: col,
+      movePlayed: move,
       ply: _ply,
       gameId: _gameId,
     );
@@ -213,11 +268,62 @@ class GameNotifier extends ChangeNotifier {
     return state;
   }
 
+  /// The integer encoding of the pass move for the active rules, or null if
+  /// the game has no pass move. Computed once via type-check rather than
+  /// dragging an abstract `passMove` getter through `GameRules` for one user.
+  late final int? _passMove = (rules is GoRules)
+      ? (rules as GoRules).passMove
+      : null;
+
+  /// Running Chinese-style area score for the current board, or null when
+  /// the game has no concept of area (e.g. Connect Four). Mid-game the
+  /// number is noisy (most of the empty board is dame) but the trend is
+  /// meaningful and the late-game number is exact.
+  ({int player, int clone})? get currentAreaScore {
+    final r = rules;
+    if (r is! GoRules) return null;
+    final score = r.areaScore(_displayBoard);
+    // areaScore returns ({white, black}); our display convention has
+    // player as +1 (white-coloured stones) and clone as -1 (dark stones).
+    return (player: score.white, clone: score.black);
+  }
+
+  /// Player concedes the game. The resigned game counts as a loss in stats
+  /// (the `games` row keeps `outcome=-1`), but its per-position rows are
+  /// scrubbed from the CBR candidate pool — resigns happen at positions the
+  /// player merely *thinks* they're losing, which doesn't make those
+  /// positions confirmed clone-winning territory. Letting the brain learn
+  /// from them would teach false patterns.
+  Future<void> resign() async {
+    if (_outcome != null || !_hasOngoingGame) return;
+    HapticFeedback.mediumImpact();
+    _isCloneThinking = false;
+    if (_gameId.isNotEmpty) {
+      await db.deleteStatesForGame(_gameId);
+      log.states.removeWhere((s) => s.gameId == _gameId);
+      await db.updateGameOutcome(_gameId, -1, _ply);
+    }
+    _outcome = -1;
+    _hasOngoingGame = false;
+    await _refreshStats();
+    notifyListeners();
+  }
+
   Future<void> _endGame(int winner) async {
     _outcome = winner;
     log.backfillGame(_gameId, winner, _ply);
     await db.backfillStates(_gameId, winner, _ply);
     await db.updateGameOutcome(_gameId, winner, _ply);
+
+    // Persist per-game area for Go (territory games). Resigns intentionally
+    // bypass this funnel — `resign` calls `updateGameOutcome` directly so the
+    // area columns stay NULL. CF has no territory concept and is not a
+    // shipping configuration; the type guard keeps it safe regardless.
+    final r = rules;
+    if (r is GoRules) {
+      final score = r.areaScore(_displayBoard);
+      await db.updateGameAreaScore(_gameId, score.white, score.black);
+    }
 
     // Per-game winner-POV invariant: storage holds the winner's pieces as +1.
     // Player wins → already +1, leave as-is. Bot wins → flip every row.
@@ -263,7 +369,7 @@ class GameNotifier extends ChangeNotifier {
     _playerWins = 0;
     _cloneWins = 0;
     _draws = 0;
-    _recentOutcomes = const [];
+    _recentGames = const [];
     _hasOngoingGame = false;
     _gameId = '';
     notifyListeners();

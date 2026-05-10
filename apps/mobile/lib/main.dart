@@ -15,7 +15,7 @@ Future<void> main() async {
   final db = DatabaseService();
   await db.init();
 
-  final rules = ConnectFourRules();
+  final rules = GoRules(size: 13);
   final log = GameLog();
   final fallback = await db.loadFallback();
   final brain = CloneBrain(rules: rules, log: log, fallback: fallback);

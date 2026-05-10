@@ -164,12 +164,11 @@ int _playGame(
       board = rules.applyMove(board, move, -1);
     }
     ply++;
-    final winner = rules.checkWinner(board);
-    if (winner != null) {
+    if (rules.isTerminal(board)) {
+      final winner = rules.finalOutcome(board);
       // winner is +1 or -1 in board frame; A is +1, B is -1.
       if (winner == 0) return 0;
       return winner == 1 ? 1 : -1;
     }
-    if (rules.legalMoves(board).isEmpty) return 0;
   }
 }

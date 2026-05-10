@@ -1,5 +1,5 @@
 name: pi_ying
-description: Pi-Ying mobile app — Connect Four against a learning clone.
+description: Pi-Ying — 皮影 — Go against a learning clone.
 publish_to: none
 version: 1.0.0+1
 
@@ -17,6 +17,7 @@ dependencies:
   path: ^1.9.0
   path_provider: ^2.1.4
   cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
 
 dev_dependencies:
   flutter_test:
@@ -29,19 +30,12 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icon/icon.png
-  fonts:
-    - family: PressStart2P
-      fonts:
-        - asset: assets/fonts/PressStart2P-Regular.ttf
-    - family: VT323
-      fonts:
-        - asset: assets/fonts/VT323-Regular.ttf
 
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/icon/icon.png"
   remove_alpha_ios: true
-  background_color_ios: "#233a8a"
-  adaptive_icon_background: "#233a8a"
+  background_color_ios: "#1A1612"
+  adaptive_icon_background: "#1A1612"
   adaptive_icon_foreground: "assets/icon/icon.png"

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_scope.dart';
 import '../theme.dart';
-import '../widgets/recent_games_strip.dart';
+import '../widgets/area_history_strip.dart';
 
 class StartScreen extends StatelessWidget {
   const StartScreen({super.key});
@@ -43,7 +43,7 @@ class StartScreen extends StatelessWidget {
                                   Navigator.pushNamed(context, '/settings'),
                               icon: const Icon(
                                 Icons.settings,
-                                color: PiYingTheme.amber,
+                                color: PiYingTheme.onSurface,
                               ),
                               tooltip: 'Settings',
                             ),
@@ -65,11 +65,17 @@ class StartScreen extends StatelessWidget {
                               letterSpacing: 4,
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 4),
+                          // 皮影 (the brand mark) is already shown by the
+                          // launcher-icon image above; the subtitle stays
+                          // text-only to avoid duplicating the characters.
+                          // The longer explanation lives in Settings → About.
                           Text(
-                            'connect four against\nyour learning clone',
+                            'shadow play of go',
                             textAlign: TextAlign.center,
-                            style: textTheme.bodyMedium,
+                            style: textTheme.bodyMedium?.copyWith(
+                              color: PiYingTheme.onSurfaceMuted,
+                            ),
                           ),
                           const SizedBox(height: 32),
                           _StatsPanel(
@@ -80,10 +86,6 @@ class StartScreen extends StatelessWidget {
                             draws: notifier.draws,
                           ),
                           const SizedBox(height: 16),
-                          Text('LAST GAMES', style: textTheme.titleSmall),
-                          const SizedBox(height: 8),
-                          RecentGamesStrip(outcomes: notifier.recentOutcomes),
-                          const Spacer(),
                           if (notifier.hasOngoingGame) ...[
                             FilledButton(
                               onPressed: () => _onResume(context),
@@ -101,6 +103,15 @@ class StartScreen extends StatelessWidget {
                                   _onNewGame(context, confirm: false),
                               child: const Text('NEW GAME'),
                             ),
+                          // Spacer absorbs extra vertical room when the
+                          // history is short, pinning the strip to the
+                          // bottom; collapses to zero when the strip is tall
+                          // enough to fill (and slightly overflow into the
+                          // outer SingleChildScrollView).
+                          const Spacer(),
+                          Text('LAST GAMES', style: textTheme.titleSmall),
+                          const SizedBox(height: 8),
+                          AreaHistoryStrip(games: notifier.recentGames),
                           const SizedBox(height: 16),
                         ],
                       ),
@@ -198,7 +209,7 @@ class _StatsPanel extends StatelessWidget {
               Text(
                 '${cloneWinPct.toStringAsFixed(0)}%',
                 style: textTheme.headlineLarge?.copyWith(
-                  color: PiYingTheme.amber,
+                  color: PiYingTheme.lineColor,
                 ),
               ),
               const SizedBox(width: 8),

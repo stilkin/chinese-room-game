@@ -84,11 +84,11 @@ void main() {
         var board = Board(6, 7);
         final gameId = 'game-$gameNum';
         var moveCount = 0;
-        int? winner;
 
-        while (winner == null && rules.legalMoves(board).isNotEmpty) {
+        while (!rules.isTerminal(board, log: log)) {
+          final legal = rules.legalMoves(board, log: log);
+          if (legal.isEmpty) break;
           final side = moveCount.isEven ? 1 : -1;
-          final legal = rules.legalMoves(board);
           final move =
               legal[Random(gameNum * 100 + moveCount).nextInt(legal.length)];
           board = rules.applyMove(board, move, side);
@@ -101,10 +101,9 @@ void main() {
             gameId: gameId,
           );
           log.addState(state);
-          winner = rules.checkWinner(board);
         }
 
-        final outcome = winner ?? 0;
+        final outcome = rules.finalOutcome(board);
         log.backfillGame(gameId, outcome, moveCount);
       }
 
