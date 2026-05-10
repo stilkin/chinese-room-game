@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../db/database_service.dart';
@@ -142,6 +143,5 @@ class AreaHistoryPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(AreaHistoryPainter old) =>
-      !identical(old.games, games) || old.games.length != games.length;
+  bool shouldRepaint(AreaHistoryPainter old) => !listEquals(old.games, games);
 }

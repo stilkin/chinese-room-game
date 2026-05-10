@@ -197,7 +197,15 @@ class GameNotifier extends ChangeNotifier {
     // resolves, reading as a flicker rather than a turn. 250ms is the
     // minimum-perceptible-pause for cause-and-effect in UI animation
     // research; tunable.
+    final scheduledGameId = _gameId;
     await Future<void>.delayed(const Duration(milliseconds: 250));
+    // Re-check liveness after the delay. resign(), deleteAllData(), and
+    // startNewGame() can all fire during the 250ms window; without this
+    // guard the bot would apply a move into an already-resigned or
+    // freshly-replaced game and persist a stranded state row. The flag
+    // `_isCloneThinking` is already reset by each of those paths, so a
+    // bare `return` is sufficient.
+    if (_outcome != null || _gameId != scheduledGameId) return;
     final decision = _brain.selectMove(_displayBoard, -1);
     _narration = decision.narration;
     final state = _applySync(decision.move, -1);

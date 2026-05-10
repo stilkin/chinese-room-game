@@ -28,7 +28,7 @@ A secondary problem the change solves: the engine smoke benchmark for `go-engine
 ### Modified Capabilities
 
 - `clone-brain`: the **Cold-start fallback personalities** requirement gains four Go-mode strategies. The CF strategies survive in the enum but are explicitly documented as never surfaced for `gameType == 'go'`.
-- `settings-screen`: the **Fallback personality picker** requirement is rewritten. The static one-line `Text` from the Go cutover is replaced with a 5-step slider. The default changes from `random` (Chaotic) to `goHugger` (Hugger).
+- `settings-screen`: the **Fallback personality picker** requirement is rewritten. The static one-line `Text` from the Go cutover is replaced with a 5-step slider. The default changes from `random` (Chaotic) to `goStarPoints` (Star-point, slider position 2 — see post-gate note above).
 
 ## Impact
 
@@ -36,11 +36,11 @@ A secondary problem the change solves: the engine smoke benchmark for `go-engine
 - `packages/game_engine/lib/src/games/go.dart` — public API of `GoRules.areaScore(Board)` is already exposed (used by the running tally). No changes here unless an `intersect(...)` helper is needed for the prefilter; even that lives in `clone_brain.dart` since it's fallback-internal.
 - `packages/game_engine/test/clone_brain_test.dart` — new unit tests: empty-board behaviour for each Go fallback, Hugger picks correct neighbour, Contact picks correct enemy-neighbour, Greedy prefilter excludes far-from-stones cells, Greedy picks territory-maximising move on a constructed mid-game board.
 - `packages/game_engine/bin/go_self_play_benchmark.dart` *(or extend the existing one)* — accepts the new tokens (`gostar`, `gohugger`, `gocontact`, `gogreedy`) and runs the round-robin gate. If it doesn't already have a Go mode, add one in this change.
-- `apps/mobile/lib/src/db/database_service.dart` — `_kUserFacingFallbacks` becomes `{random, goStarPoints, goHugger, goContact, goGreedyArea}`. `_kDefaultFallback` becomes `goHugger`. `loadFallback`'s coercion logic already handles unknown values gracefully.
-- `apps/mobile/lib/src/screens/settings_screen.dart` — restored to a `StatefulWidget` with a `Slider(divisions: 4)` + live-updating name/blurb text, mirroring the CF pattern. `_kSliderLevels` becomes the five Go-mode entries; `_kDefaultSliderIndex = 2` (Hugger).
+- `apps/mobile/lib/src/db/database_service.dart` — `_kUserFacingFallbacks` becomes `{random, goStarPoints, goHugger, goContact, goGreedyArea}`. `_kDefaultFallback` becomes `goStarPoints` (post-gate). `loadFallback`'s coercion logic already handles unknown values gracefully.
+- `apps/mobile/lib/src/screens/settings_screen.dart` — restored to a `StatefulWidget` with a `Slider(divisions: 4)` + live-updating name/blurb text, mirroring the CF pattern. `_kSliderLevels` becomes the five Go-mode entries; `_kDefaultSliderIndex = 2` (Star-point, post-gate).
 - `apps/mobile/lib/src/state/game_notifier.dart` — no code change required. `main.dart` already bootstraps the brain via `db.loadFallback()`; the new default flows through automatically.
-- `apps/mobile/test/database_service_test.dart` — round-trip tests for the four new values; legacy-mapping test (`pileFocus` → `goHugger`); default-on-empty is `goHugger`.
-- `apps/mobile/test/game_notifier_test.dart` — minor: any test asserting the literal default fallback updates from `random` to `goHugger`. Test scenarios using `random` for "stay-out-of-the-way" determinism are left as-is (random is still a user-facing value).
+- `apps/mobile/test/database_service_test.dart` — round-trip tests for the four new values; legacy-mapping test (`pileFocus` → `goStarPoints`); default-on-empty is `goStarPoints`.
+- `apps/mobile/test/game_notifier_test.dart` — minor: any test asserting the literal default fallback updates from `random` to `goStarPoints`. Test scenarios using `random` for "stay-out-of-the-way" determinism are left as-is (random is still a user-facing value).
 - **Storage**: no schema change. `clone_config` value column already stores arbitrary text.
-- **Migration**: non-destructive. Existing user choice is honoured if it's still valid (only `random` carries over from the Go cutover); legacy CF values silently become `goHugger`.
+- **Migration**: non-destructive. Existing user choice is honoured if it's still valid (only `random` carries over from the Go cutover); legacy CF values silently become `goStarPoints`.
 - **Behavioural**: cold-start games feel more deliberate. The strongest fallback (Greedy) is recognisably stronger than the weakest (Chaotic) but still beatable and clearly *not* minimax — the clone-as-shadow gimmick stays intact.

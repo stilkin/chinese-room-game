@@ -95,14 +95,30 @@ class CloneBrain {
     // Otherwise a weak heatmap (small magnitudes from low-relevance
     // candidates) would let the pass score (`GoMoveScorer.passScore = 0.01`)
     // beat every legal placement, and the bot would pass turn after turn
-    // even with plenty of board to play on. Random fallback still picks from
-    // the full `legal` list (so the bot can occasionally pass when it has no
-    // data at all), but a brain with data will only consider passing when
-    // the opponent did. The same flag also gates the self-fill→pass override
-    // applied to the chosen move at every emit point below.
+    // even with plenty of board to play on. The same flag also gates both
+    // the fallback pool below (so e.g. `random` can't spontaneously pass on
+    // a 13×13 cold-start) and the self-fill→pass override applied to the
+    // chosen move at every emit point below.
     final inProgress = log.states.where((s) => s.outcome == null).toList();
     final opponentJustPassed =
         inProgress.isNotEmpty && rules.isPassMove(inProgress.last.movePlayed);
+
+    // `fallbackPool` excludes `passMove` unless the opponent just passed.
+    // Without this filter, `FallbackStrategy.random` would spontaneously
+    // pass on Go cold-start (~0.6% of moves on an empty 13×13), and any
+    // future fallback path would inherit the same bug. The Go scorer-based
+    // fallbacks (Hugger/Contact/Greedy/Star-point) already strip pass via
+    // `_goPlacementMoves` — this pool gives the same protection to
+    // `random` and to any CF fallback that happens to be configured.
+    final fallbackPool =
+        opponentJustPassed
+            ? legal
+            : legal.where((m) => !rules.isPassMove(m)).toList();
+    // Last-resort safety: if filtering eliminated every move (pass-only
+    // position, opponent hasn't passed — should be unreachable in practice),
+    // fall back to the original legal list so we never call into the
+    // fallback with an empty pool.
+    final fallbackLegal = fallbackPool.isEmpty ? legal : fallbackPool;
 
     // Filter out pass-state rows: their boards are byte-equal to the prior
     // state's board, so they teach nothing positionally and inflate the
@@ -116,20 +132,17 @@ class CloneBrain {
             .toList();
     if (completed.isEmpty) {
       return _maybePassOnEnclosed(
-        _fallbackDecision(legal, currentBoard, side),
+        _fallbackDecision(fallbackLegal, currentBoard, side),
         currentBoard,
         side,
         opponentJustPassed,
       );
     }
 
-    final brainLegal =
-        opponentJustPassed
-            ? legal
-            : legal.where((m) => !rules.isPassMove(m)).toList();
+    final brainLegal = fallbackLegal;
     if (brainLegal.isEmpty) {
       return _maybePassOnEnclosed(
-        _fallbackDecision(legal, currentBoard, side),
+        _fallbackDecision(fallbackLegal, currentBoard, side),
         currentBoard,
         side,
         opponentJustPassed,
@@ -162,7 +175,7 @@ class CloneBrain {
 
     if (all.isEmpty) {
       return _maybePassOnEnclosed(
-        _fallbackDecision(legal, currentBoard, side),
+        _fallbackDecision(fallbackLegal, currentBoard, side),
         currentBoard,
         side,
         opponentJustPassed,
@@ -176,7 +189,7 @@ class CloneBrain {
     );
     if (selected == null) {
       return _maybePassOnEnclosed(
-        _fallbackDecision(legal, currentBoard, side),
+        _fallbackDecision(fallbackLegal, currentBoard, side),
         currentBoard,
         side,
         opponentJustPassed,
@@ -192,7 +205,7 @@ class CloneBrain {
     );
     final score = rules.moveScorer.scoreMove(selected, currentBoard, heatmap);
     if (score <= 0) {
-      final move = _fallbackMove(legal, currentBoard, side);
+      final move = _fallbackMove(fallbackLegal, currentBoard, side);
       return _maybePassOnEnclosed(
         MoveDecision(
           move: move,
