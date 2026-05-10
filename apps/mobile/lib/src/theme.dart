@@ -79,6 +79,11 @@ class PiYingTheme {
         labelMedium: _title(12, color: onSurface, letterSpacing: 1.0),
         labelSmall: _title(11, color: onSurfaceMuted, letterSpacing: 1.0),
       ),
+      // Button text styles must NOT bake a color — `textStyle.color` takes
+      // precedence over `foregroundColor`, so a per-button override (e.g. the
+      // cinnabar Delete button on the settings screen) gets silently
+      // squashed otherwise. Font / size / spacing only here; colour comes
+      // from `foregroundColor`.
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: cinnabar,
@@ -87,7 +92,7 @@ class PiYingTheme {
             borderRadius: BorderRadius.all(Radius.circular(2)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-          textStyle: _title(14, color: onSurface, letterSpacing: 1.5),
+          textStyle: _title(14, letterSpacing: 1.5),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -98,13 +103,13 @@ class PiYingTheme {
             borderRadius: BorderRadius.all(Radius.circular(2)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          textStyle: _title(13, color: onSurface, letterSpacing: 1.5),
+          textStyle: _title(13, letterSpacing: 1.5),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: onSurface,
-          textStyle: _title(12, color: onSurface),
+          textStyle: _title(12),
         ),
       ),
       appBarTheme: AppBarTheme(
