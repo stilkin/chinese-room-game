@@ -188,13 +188,28 @@ class _GoBoardPainter extends CustomPainter {
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
     );
 
-    // Body: radial gradient from a slightly lighter top-left to the base.
-    final gradient = RadialGradient(
-      center: const Alignment(-0.4, -0.4),
-      radius: 0.9,
-      colors: [Color.lerp(base, Colors.white, 0.25)!, base],
-      stops: const [0.0, 0.85],
-    );
+    // Body. Player (ivory) stones get a 3-stop gradient (bright highlight →
+    // base → subtle warm shadow at the lower-right edge) so they read as
+    // domed clamshell rather than flat circles. Clone (dark) stones use a
+    // 2-stop highlight-to-base gradient — black slate is visually flatter
+    // in real Go too, so a single highlight hint is enough.
+    final gradient = side == 1
+        ? RadialGradient(
+            center: const Alignment(-0.4, -0.4),
+            radius: 1.0,
+            colors: [
+              Color.lerp(base, Colors.white, 0.35)!,
+              base,
+              Color.lerp(base, Colors.black, 0.18)!,
+            ],
+            stops: const [0.0, 0.55, 1.0],
+          )
+        : RadialGradient(
+            center: const Alignment(-0.4, -0.4),
+            radius: 0.9,
+            colors: [Color.lerp(base, Colors.white, 0.3)!, base],
+            stops: const [0.0, 0.85],
+          );
     canvas.drawCircle(
       center,
       radius,
@@ -204,12 +219,12 @@ class _GoBoardPainter extends CustomPainter {
         ),
     );
 
-    // Crisp edge. For dark stones we lighten the outline so the silhouette
-    // separates from the dark board; for light stones we darken it so the
-    // edge reads cleanly.
+    // Crisp edge. For dark stones the outline used to be lerp 0.45 toward
+    // white, which read as a too-prominent grey ring. Dropping to 0.18
+    // keeps the silhouette but lets the dark body dominate.
     final outline = side == 1
         ? Color.lerp(base, Colors.black, 0.3)!
-        : Color.lerp(base, Colors.white, 0.45)!;
+        : Color.lerp(base, Colors.white, 0.18)!;
     canvas.drawCircle(
       center,
       radius,
