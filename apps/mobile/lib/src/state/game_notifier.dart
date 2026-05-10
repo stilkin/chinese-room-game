@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -51,7 +52,9 @@ class GameNotifier extends ChangeNotifier {
   int get playerWins => _playerWins;
   int get cloneWins => _cloneWins;
   int get draws => _draws;
-  List<RecentGame> get recentGames => _recentGames;
+  // Unmodifiable view — consumers must go through setFallback / game-flow
+  // mutators, not mutate the list under the notifier's feet.
+  List<RecentGame> get recentGames => UnmodifiableListView(_recentGames);
   bool get isCloneThinking => _isCloneThinking;
   bool get isPlayerTurn =>
       _currentSide == 1 && _outcome == null && !_isCloneThinking;
