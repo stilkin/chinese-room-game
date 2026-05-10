@@ -96,6 +96,26 @@ class CloneBrain {
       return _fallbackDecision(legal, currentBoard);
     }
 
+    // Pass should only enter the brain's selection set when the opponent
+    // just passed — that's the game-end signal where mirroring is correct.
+    // Otherwise a weak heatmap (small magnitudes from low-relevance candidates)
+    // would let the pass score (`GoMoveScorer.passScore = 0.01`) beat every
+    // legal placement, and the bot would pass turn after turn even with
+    // plenty of board to play on. Surfaced on-device after the first
+    // playable Go build. Random fallback still picks from the full `legal`
+    // list (so the bot can occasionally pass when it has no data at all),
+    // but a brain with data will only consider passing when the opponent did.
+    final inProgress = log.states.where((s) => s.outcome == null).toList();
+    final opponentJustPassed =
+        inProgress.isNotEmpty && rules.isPassMove(inProgress.last.movePlayed);
+    final brainLegal =
+        opponentJustPassed
+            ? legal
+            : legal.where((m) => !rules.isPassMove(m)).toList();
+    if (brainLegal.isEmpty) {
+      return _fallbackDecision(legal, currentBoard);
+    }
+
     // Four queries: perspective × mirror. Q_A and Q_B target different
     // populations of stored rows via the outcome filter — Q_A finds rows
     // where the +1 mover won (winner-mover candidates), Q_B finds rows where
@@ -126,7 +146,7 @@ class CloneBrain {
 
     final selected = rules.moveSelectionStrategy.selectMove(
       all,
-      legal,
+      brainLegal,
       currentBoard,
     );
     if (selected == null) {

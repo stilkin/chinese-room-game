@@ -186,6 +186,17 @@ class DatabaseService {
     });
   }
 
+  /// Removes a game's per-position rows from `game_states` but leaves its
+  /// `games` row alone. Used by the resign path: the resigned game still
+  /// counts in win/loss statistics (the games row carries `outcome=-1`),
+  /// but its stored positions don't enter the CBR candidate pool — resigning
+  /// is a "I'm giving up" signal, not a "this position is a confirmed clone
+  /// win" one, and learning from those positions would teach the brain
+  /// false patterns.
+  Future<void> deleteStatesForGame(String gameId) async {
+    await db.delete('game_states', where: 'game_id = ?', whereArgs: [gameId]);
+  }
+
   Future<void> replaceAllStatesForGameAtomic(
     String gameId,
     List<GameState> replacements,

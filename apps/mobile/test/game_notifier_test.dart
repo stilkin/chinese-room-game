@@ -210,27 +210,25 @@ void main() {
     expect(f.notifier.hasOngoingGame, false);
   });
 
-  test(
-    'resign concedes the game and runs the normal end-of-game pipeline',
-    () async {
-      await f.notifier.startNewGame();
-      // Play one move so the resigned game has at least one stored state.
-      await f.notifier.playerMove(_move(6, 6));
-      await _settle(f.notifier);
+  test('resign records a loss but scrubs the position rows', () async {
+    await f.notifier.startNewGame();
+    // Play a couple of moves so there are stored states to scrub.
+    await f.notifier.playerMove(_move(6, 6));
+    await _settle(f.notifier);
+    await f.notifier.playerMove(_move(6, 7));
+    await _settle(f.notifier);
+    expect(await f.db.loadAllGameStates(), isNotEmpty);
 
-      await f.notifier.resign();
+    await f.notifier.resign();
 
-      expect(f.notifier.outcome, -1);
-      expect(f.notifier.hasOngoingGame, false);
-      expect(f.notifier.gamesPlayed, 1);
-      // Stored states should all carry an outcome (backfill ran).
-      final loaded = await f.db.loadAllGameStates();
-      expect(loaded, isNotEmpty);
-      for (final s in loaded) {
-        expect(s.outcome, isNotNull);
-      }
-    },
-  );
+    expect(f.notifier.outcome, -1);
+    expect(f.notifier.hasOngoingGame, false);
+    expect(f.notifier.gamesPlayed, 1);
+    // Position rows scrubbed so they don't pollute CBR. The games row
+    // remains (counts as a loss in stats).
+    expect(await f.db.loadAllGameStates(), isEmpty);
+    expect(f.log.states, isEmpty);
+  });
 
   test(
     'resign on empty game records the loss without any stored states',

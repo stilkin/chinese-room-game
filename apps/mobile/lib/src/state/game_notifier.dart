@@ -244,16 +244,23 @@ class GameNotifier extends ChangeNotifier {
     return (player: score.white, clone: score.black);
   }
 
-  /// Player concedes the game. Mechanically equivalent to a clone win:
-  /// outcome `-1`, normal end-of-game pipeline (backfill + winner-POV
-  /// inversion). The brain learns from the resigned game as it would from
-  /// any other clone win — positions where the player gave up are
-  /// genuinely positions where the clone was ahead, so the lesson is
-  /// correct.
+  /// Player concedes the game. The resigned game counts as a loss in stats
+  /// (the `games` row keeps `outcome=-1`), but its per-position rows are
+  /// scrubbed from the CBR candidate pool — resigns happen at positions the
+  /// player merely *thinks* they're losing, which doesn't make those
+  /// positions confirmed clone-winning territory. Letting the brain learn
+  /// from them would teach false patterns.
   Future<void> resign() async {
     if (_outcome != null || !_hasOngoingGame) return;
     _isCloneThinking = false;
-    await _endGame(-1);
+    if (_gameId.isNotEmpty) {
+      await db.deleteStatesForGame(_gameId);
+      log.states.removeWhere((s) => s.gameId == _gameId);
+      await db.updateGameOutcome(_gameId, -1, _ply);
+    }
+    _outcome = -1;
+    _hasOngoingGame = false;
+    await _refreshStats();
     notifyListeners();
   }
 
