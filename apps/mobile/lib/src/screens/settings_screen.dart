@@ -20,8 +20,9 @@ class _PersonalityLevel {
 // second-strongest. Chaotic (pure-random) was reworked as Wanderer
 // (Manhattan-2 prefilter, random within); Wanderer ended up *weaker* than
 // pure-random because concentrating random plays in interaction-prone
-// zones gets them punished. Contact at 51% win-rate is the new mid-of-slider
-// default — balanced opponent, neither too easy nor too hard.
+// zones gets them punished. Default is Star-point (position 1) — not the
+// mid-of-slider but the recognizable Go-textbook opener; ~30% win-rate
+// means cold-start beginners win most games (encouraging first impression).
 const List<_PersonalityLevel> _kSliderLevels = [
   _PersonalityLevel(
     FallbackStrategy.random,
@@ -50,7 +51,7 @@ const List<_PersonalityLevel> _kSliderLevels = [
   ),
 ];
 
-const int _kDefaultSliderIndex = 2; // Contact
+const int _kDefaultSliderIndex = 1; // Star-point
 
 int _sliderIndexFor(FallbackStrategy strategy) {
   for (var i = 0; i < _kSliderLevels.length; i++) {

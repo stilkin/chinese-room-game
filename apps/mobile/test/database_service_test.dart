@@ -117,8 +117,8 @@ void main() {
     expect(await service.getGamesPlayedCount(), 1);
   });
 
-  test('fallback defaults to Contact and round-trips Go values', () async {
-    expect(await service.loadFallback(), FallbackStrategy.goContact);
+  test('fallback defaults to Star-point and round-trips Go values', () async {
+    expect(await service.loadFallback(), FallbackStrategy.goStarPoints);
 
     // All five user-facing Go-mode values round-trip cleanly.
     for (final s in [
@@ -134,7 +134,7 @@ void main() {
   });
 
   test(
-    'fallback coerces non-user-facing CF values to Contact on read',
+    'fallback coerces non-user-facing CF values to Star-point on read',
     () async {
       // CF personalities still exist in the engine (benchmark use) but aren't
       // surfaced in Go mode; loadFallback silently coerces them. Same
@@ -147,12 +147,12 @@ void main() {
         FallbackStrategy.middleFocus,
       ]) {
         await service.saveFallback(s);
-        expect(await service.loadFallback(), FallbackStrategy.goContact);
+        expect(await service.loadFallback(), FallbackStrategy.goStarPoints);
       }
     },
   );
 
-  test('fallback maps unknown / legacy stored value to Contact', () async {
+  test('fallback maps unknown / legacy stored value to Star-point', () async {
     // Simulate legacy data: write a string that no longer corresponds to any
     // enum value (like the removed `edgeFocus` or the renamed `goHugger`).
     for (final legacyValue in ['edgeFocus', 'goHugger']) {
@@ -160,7 +160,7 @@ void main() {
         'key': 'fallback_personality',
         'value': legacyValue,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
-      expect(await service.loadFallback(), FallbackStrategy.goContact);
+      expect(await service.loadFallback(), FallbackStrategy.goStarPoints);
     }
   });
 

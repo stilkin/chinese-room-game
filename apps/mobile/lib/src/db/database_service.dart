@@ -344,8 +344,11 @@ class DatabaseService {
   /// not in this set is silently mapped to the default. Legacy `goHugger`
   /// strings (from before the Diamond rework) also coerce to the default —
   /// the enum value no longer exists so `firstWhere` falls through.
-  /// Default is Contact (slider mid, ~51% win-rate against the field — a
-  /// balanced opponent neither too easy nor too hard for first impression).
+  /// Default is Star-point: ~30% win-rate against the field means a beginner
+  /// wins most cold-start games (encouraging first impression), and its
+  /// textbook hoshi opener visually communicates "this is Go" from move 1.
+  /// The contemplative shadow-play aesthetic matters more here than holding
+  /// the CF precedent of "default = exact mid-of-slider".
   static const _kUserFacingFallbacks = {
     FallbackStrategy.random,
     FallbackStrategy.goStarPoints,
@@ -353,7 +356,7 @@ class DatabaseService {
     FallbackStrategy.goContact,
     FallbackStrategy.goGreedyArea,
   };
-  static const _kDefaultFallback = FallbackStrategy.goContact;
+  static const _kDefaultFallback = FallbackStrategy.goStarPoints;
 
   Future<FallbackStrategy> loadFallback() async {
     final rows = await db.query(
