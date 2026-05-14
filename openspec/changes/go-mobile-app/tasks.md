@@ -64,4 +64,4 @@
 - [x] 9.1 `flutter analyze` clean.
 - [x] 9.2 `flutter test` clean (34 tests pass).
 - [x] 9.3 Build APK: `flutter build apk --debug` succeeds.
-- [ ] 9.4 Manual smoke on device: place a stone, capture an opposing stone, pass, two-pass terminates, post-game shows area score, settings shows just "Chaotic", restart preserves the choice, narration reads naturally, resume mid-game works.
+- [x] 9.4 Manual smoke on device: place a stone, capture an opposing stone, pass, two-pass terminates, post-game shows area score, settings shows just "Chaotic", restart preserves the choice, narration reads naturally, resume mid-game works.
