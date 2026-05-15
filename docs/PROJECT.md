@@ -6,7 +6,7 @@ A mobile game platform where players play classic board games against an AI "clo
 
 Optionally, players can sync their game logs to an online server where their clone competes against other players' clones in an automated league with leaderboards and replays.
 
-The first game is **Connect Four**, with a roadmap toward Othello, Chess, and Go.
+The shipping game is **Go on 13×13**, with a roadmap toward Othello, Chess, and full-size 19×19 Go. Connect Four was the MVP target and lives on as engine regression coverage; it is no longer surfaced in the mobile app.
 
 ---
 
@@ -22,7 +22,7 @@ The clone AI does not use neural networks, minimax, or any traditional game AI. 
 
 4. **Play the best-weighted move** from the most similar historical state.
 
-5. **Narrate the decision** to the player: "Playing a move I saw in game #5", "I've seen this before and it didn't end well — trying something different", "I don't know what to do, playing randomly."
+5. **Narrate the decision** to the player: "Playing a move I saw in game #5", "I've seen this before and it didn't end well — trying something different", "I don't know what to do, playing star-point."
 
 ### Key Properties
 
@@ -39,10 +39,13 @@ All games use a **2D array of signed bytes** (`Int8`). This covers:
 
 | Game         | Board Size | Values Needed                          |
 |--------------|------------|----------------------------------------|
-| Connect Four | 7×6        | -1, 0, +1                              |
+| Go (shipping)| 13×13      | -1, 0, +1                              |
+| Go (future)  | 19×19      | -1, 0, +1                              |
 | Othello      | 8×8        | -1, 0, +1                              |
-| Go           | 19×19      | -1, 0, +1                              |
+| Connect Four | 7×6        | -1, 0, +1                              |
 | Chess        | 8×8        | ±1 to ±20 (weighted by piece value)     |
+
+Go uses a special **pass move** sentinel alongside intersection indices; two consecutive passes terminate the game and trigger Chinese-style area scoring.
 
 For chess, piece values are mapped to pixel intensities to make similarity search more strategically meaningful:
 
@@ -61,7 +64,7 @@ Negative values represent the opponent's pieces. The high king value ensures kin
 
 ## Similarity Search: Board States as Images
 
-Board states are treated as tiny grayscale images. Each piece's value is **diffused** — spread across the board according to the game's movement rules — and the resulting influence map is quantized to one signed byte per cell (Int8). Matching is L1 distance over those quantized images, with a per-game candidate prefilter (e.g. ply window for Connect Four) to trim the search space before distance compute.
+Board states are treated as tiny grayscale images. Each piece's value is **diffused** — spread across the board according to the game's movement rules — and the resulting influence map is quantized to one signed byte per cell (Int8). Matching is L1 distance over those quantized images, with a per-game candidate prefilter (e.g. ply window for Connect Four, total-material window for Go) to trim the search space before distance compute.
 
 A separate exact-hash layer was considered (Zobrist) and rejected: at our scale, single-pass L1 over Int8 vectors is microseconds and the prefilter already does the broad cut. Two representations per row was more storage and code for no measurable benefit.
 
@@ -71,14 +74,14 @@ Before computing similarity, board states are **diffused** — each piece's valu
 
 #### Diffusion Kernels Per Game
 
+- **Go:** Spatial diffusion in all eight directions, attenuating with distance, blocked by opponent stones. Approximates influence/territory — the same concept a human reads off the board when judging "whose area is this?"
 - **Connect Four:** Each piece radiates along the four winning directions (horizontal, vertical, two diagonals) for ~3 squares. This captures connection potential.
-- **Go:** Spatial diffusion in all directions, attenuating with distance, blocked by opponent stones. Approximates influence/territory.
 - **Chess:** Each piece radiates along its legal move paths (rook along rank/file, bishop along diagonals, knight to L-shaped squares, etc.). Stopped by obstacles (other pieces) on the first diffusion step. Subsequent steps are less strict about obstruction since multiple pieces will have moved.
 - **Othello:** Diffusion along eight directions, stopped at own pieces or empty squares (flanking lines).
 
 #### Diffusion Depth
 
-2-3 steps is recommended. The diffusion map doesn't need to predict checkmate — it needs to cluster structurally similar positions together. The outcome weighting handles the rest.
+2-3 steps is recommended. The diffusion map doesn't need to predict the endgame — it needs to cluster structurally similar positions together. The outcome weighting handles the rest.
 
 #### Result
 
@@ -95,7 +98,7 @@ The storage convention is **per-game winner-POV** at write time:
 
 At every move decision, the brain:
 
-1. Runs **four queries** (perspective × mirror) against the stored rows. Per-game `CandidateFilter` trims candidates by, e.g., ply window for Connect Four, widening adaptively if too few survive.
+1. Runs **four queries** (perspective × mirror) against the stored rows. Per-game `CandidateFilter` trims candidates by, e.g., ply window for Connect Four or total-material window for Go, widening adaptively if too few survive.
 2. Ranks survivors by L1 distance over the quantized diffused images; caps at top-K per query (K=20). Candidates beyond a per-game L1 ceiling are dropped.
 3. Outcome filter: keeps `outcome=+1` rows from the perspective-flipped queries (own past wins) and `outcome=-1` rows from the unflipped queries (own past losses); discards cross-side rows.
 4. Accumulates `weight × candidate.diffusedImage` (mirrored if from a mirror query) into a single signed heatmap, with `weight = 1/(1 + movesToEnd) × 1/(1 + l1Distance)`. Weights are always positive — the candidate image's natural sign carries the win/loss lesson.
@@ -106,12 +109,14 @@ At every move decision, the brain:
 All custom Dart, no external libraries needed. Comparison cost per pair:
 
 | Game         | Values per board | 15,000 states brute-force |
-|--------------|-----------------|---------------------------|
-| Connect Four | 42              | ~1.5ms                    |
-| Chess        | 64              | ~3-5ms                    |
-| Go (19×19)   | 361             | ~200-300ms                |
+|--------------|------------------|---------------------------|
+| Connect Four | 42               | ~1.5ms                    |
+| Othello      | 64               | ~2-3ms                    |
+| Chess        | 64               | ~3-5ms                    |
+| Go (13×13)   | 169              | ~80-120ms                 |
+| Go (19×19)   | 361              | ~200-300ms                |
 
-These are acceptable for all games. The ply-count filter typically reduces the search space by 90%+. A "thinking" spinner for the clone is part of the UX anyway.
+These are acceptable for all games at our scale. The per-game candidate filter typically reduces the search space by 90%+. A short "thinking" pause for the clone is part of the UX anyway (the mobile app inserts a 250ms minimum to keep moves visible).
 
 ---
 
@@ -119,17 +124,21 @@ These are acceptable for all games. The ply-count filter typically reduces the s
 
 ### Cold Start (No Data)
 
-The player picks a **fallback personality** for their clone via a 5-step slider. For Connect Four, ordered by observed strength in head-to-head play:
+The player picks a **fallback personality** for their clone via a 5-step slider, ordered left-to-right by observed strength in head-to-head self-play (round-robin gate, 50 games per direction, seed 42).
 
-- **Chaotic** (`random`) — uniform random legal column.
-- **Builder** (`ownPileAdjacent`) — drops next to the tallest stack of own pieces.
-- **Stacker** (`pileFocus`) — plays the column with the highest pile of pieces, any colour. **Default for new installs.**
-- **Connector** (`greedyConnect`) — extends own longest chain (length-4 wins fall out for free).
-- **Sentinel** (`greedyConnectDefense`) — Connector plus a one-step defensive block on opponent length-4 threats.
+**For Go (`GoRules`)** — the active set, shipping:
 
-`middleFocus` (closest-to-centre) survives in the engine for benchmark use only — never surfaced via UI. `edgeFocus` was removed entirely as a known weak strategy with no narrative purpose.
+- **Wanderer** (`random`) — localised random: empty cells within Manhattan-2 of any stone, picked uniformly. Falls through to Star-point on an empty board.
+- **Star-point** (`goStarPoints`) — static per-cell weights (3 at hoshi/tengen, 2 on the 3rd/4th lines, 1 on the 1st line + centre cross, 0 elsewhere). Picks max with random tie-break. **Default for new installs** — its textbook opening communicates "this is Go" from move 1 and ~30% win-rate against the field gives an encouraging first impression.
+- **Contact** (`goContact`) — scores each legal placement by its count of orthogonally-adjacent enemy stones; same Star-point tie-break.
+- **Diamond** (`goDiamond`) — scores by `(diagonal-friendly count) − (orthogonal-friendly count)`, actively penalising dumpling shapes and rewarding kosumi / ponnuki extensions. Same tie-break.
+- **Greedy** (`goGreedyArea`) — for each candidate placement near existing stones, applies the move and picks the differential `(own_area − opponent_area)` maximiser. Falls through to Star-point if no candidates.
 
-The fallback fires when the clone has no relevant data, when retrieval returns nothing past the L1 ceiling, or when the all-losing guard rejects the chosen move. As game data accumulates, the fallback fires less and less.
+**For Connect Four (`ConnectFourRules`)** — retained for engine regression:
+
+- **Chaotic** (`random`), **Builder** (`ownPileAdjacent`), **Stacker** (`pileFocus`, default), **Connector** (`greedyConnect`), **Sentinel** (`greedyConnectDefense`). `middleFocus` and `edgeFocus` survive in the engine for benchmarking but are never surfaced.
+
+The fallback fires when the clone has no relevant data, when retrieval returns nothing past the L1 ceiling, or when the all-losing guard rejects the chosen move. As game data accumulates, the fallback fires less and less. Legacy persisted values (`goHugger`, `pileFocus` in Go mode, etc.) coerce to the current default at read time.
 
 ### Only Losing Data Available
 
@@ -139,7 +148,7 @@ Three strategies, composable:
 
 2. **Anti-imitation:** If all similar states led to losses, find the legal move that is *least represented* in the losing data. Explore what hasn't been tried. "Everything I've tried here went badly — trying something new."
 
-3. **Conservative fallback:** When confidence is low (poor match quality or negative expected outcome), blend in a simple heuristic (maximize material, center control, etc.). Fades out naturally as data grows.
+3. **Conservative fallback:** When confidence is low (poor match quality or negative expected outcome), blend in the configured personality (Star-point by default). Fades out naturally as data grows.
 
 ---
 
@@ -150,7 +159,7 @@ The clone always displays a one-liner explaining its reasoning. This is essentia
 - "Playing a move from game #5 (won in 3 moves)"
 - "I've seen this 4 times before — going with what worked best"
 - "Playing a move that beat you in game #12"
-- "I've never seen anything like this — going with stacker"
+- "I've never seen anything like this — going with star-point"
 - "Everything I know about this position is bad — trying something different"
 
 ---
@@ -163,19 +172,21 @@ One language across the entire stack. The game engine is written once as a share
 
 ### Mobile App: Flutter
 
-- **Rendering:** CustomPainter for game boards (GPU-accelerated via Impeller). Scales from Connect Four (42 cells) to Go (361 intersections) without changing rendering strategy.
-- **Animations:** Flutter's built-in animation framework (Reanimated, Tween, AnimatedBuilder) for piece drops, captures, etc.
-- **Local storage:** `sqflite` (SQLite) for the game state log.
-- **State management:** Riverpod or ChangeNotifier (keep it simple).
-- **Targets:** Android and iOS from a single codebase.
+- **Rendering:** CustomPainter for game boards (GPU-accelerated via Impeller). Scales from Connect Four (42 cells) to 13×13 Go (169 intersections) and beyond without changing rendering strategy.
+- **Animations:** Flutter's built-in animation framework (Tween, AnimatedBuilder) for stone placement, captures, last-move ring, etc.
+- **Local storage:** `sqflite` (SQLite) for the game state log. Schema currently at v6 (adds `player_area` / `clone_area` columns for per-game Chinese-area scoring).
+- **State management:** Plain `ChangeNotifier` (Riverpod considered, deferred — current scale doesn't warrant it).
+- **Typography:** Google Fonts' **Klee One** (CJK-capable, hand-brushed sumi feel) — renders Latin and `皮影` in a single typeface.
+- **Palette:** Moonlit-goban — warm dark wood `boardPanel`, ivory grid `lineColor`, ivory player stones, near-black clone stones, cinnabar `cinnabar` accent (last-move ring).
+- **Targets:** Android shipping; iOS from the same codebase whenever needed.
 
-### Online Frontend: Flutter Web
+### Online Frontend: Flutter Web *(phase 3, not yet started)*
 
 - Compiles to static HTML/JS/CSS via `flutter build web`.
 - Deployable on any web server (Nginx, Apache, static hosting).
 - Features: leaderboards, clone-vs-clone replays, account management.
 
-### Online Backend: Dart (Dart Frog or Relic)
+### Online Backend: Dart (Dart Frog or Relic) *(phase 3, not yet started)*
 
 - Compiled to a native binary via `dart compile exe` — no runtime dependencies.
 - REST API for game log sync, clone-vs-clone match execution, leaderboard serving.
@@ -186,13 +197,13 @@ One language across the entire stack. The game engine is written once as a share
 
 A pure Dart library containing:
 
-- Board representation and rules per game.
+- Board representation and rules per game (`ConnectFourRules`, `GoRules`).
 - Perspective and mirror transforms (`flipPerspective`, `mirrorBoard`, `invertState`).
 - Diffusion kernel per game type, with quantization to Int8.
 - L1 similarity matching with adaptive-widening per-game `CandidateFilter`.
 - Heatmap-based `MoveSelectionStrategy` and per-game `MoveScorer`.
 - `CloneBrain` orchestrating four-query retrieval + heatmap + all-losing fallback.
-- Fallback personality strategies (cold-start "personalities").
+- Game-aware fallback personality strategies (cold-start "personalities").
 - Clone narration text generation.
 
 This package has no Flutter dependency — it's pure Dart, testable with `dart test`.
@@ -202,9 +213,9 @@ This package has no Flutter dependency — it's pure Dart, testable with `dart t
 ## Project Structure
 
 ```
-clone_wars/
+chinese-room-game/                  # (Pi-Ying)
 ├── packages/
-│   └── game_engine/            # Shared pure Dart package
+│   └── game_engine/                # Shared pure Dart package
 │       ├── lib/
 │       │   ├── src/
 │       │   │   ├── board.dart              # Board representation (2D Int8 array)
@@ -217,37 +228,35 @@ clone_wars/
 │       │   │   ├── clone_brain.dart        # Four-query brain + fallback personalities
 │       │   │   ├── narration.dart          # Clone narration text
 │       │   │   └── games/
-│       │   │       └── connect_four.dart   # Rules, diffusion kernel, filter, scorer
-│       │   │       # othello / chess / go land here when phase 4 starts
+│       │   │       ├── connect_four.dart   # Engine regression only (no UI)
+│       │   │       └── go.dart             # Rules, diffusion, filter, scorer, area-score
 │       │   └── game_engine.dart            # Public API barrel file
+│       ├── bin/
+│       │   └── go_personality_round_robin.dart   # Personality strength gate
 │       ├── test/
 │       └── pubspec.yaml
 │
 ├── apps/
-│   ├── mobile/                  # Flutter mobile app
-│   │   ├── lib/
-│   │   │   ├── screens/
-│   │   │   ├── widgets/
-│   │   │   ├── services/
-│   │   │   │   ├── game_log_service.dart   # SQLite read/write
-│   │   │   │   └── sync_service.dart       # API sync (phase 2)
-│   │   │   └── main.dart
-│   │   └── pubspec.yaml                    # depends on game_engine
-│   │
-│   └── web/                     # Flutter web frontend (phase 2)
-│       ├── lib/
+│   └── mobile/                     # Flutter mobile app (Android shipping)
+│       ├── lib/src/
+│       │   ├── screens/                    # start, game, post_game, settings
+│       │   ├── widgets/                    # go_board, area_history_strip, ...
+│       │   ├── state/game_notifier.dart    # ChangeNotifier game loop
+│       │   ├── db/database_service.dart    # sqflite, schema v6
+│       │   ├── theme.dart                  # Klee One + moonlit-goban palette
+│       │   └── main.dart                   # wires GoRules(size: 13)
 │       └── pubspec.yaml                    # depends on game_engine
 │
-├── server/                      # Dart backend (phase 2)
-│   ├── lib/
-│   │   ├── routes/
-│   │   ├── services/
-│   │   │   ├── matchmaking.dart            # Clone-vs-clone execution
-│   │   │   └── leaderboard.dart
-│   │   └── main.dart
-│   └── pubspec.yaml                        # depends on game_engine
+│   # apps/web/ and server/ are phase 3 — directories not yet created.
 │
-└── pubspec.yaml                 # Workspace root (Dart pub workspaces)
+├── openspec/                       # Spec-driven workflow
+│   ├── config.yaml
+│   ├── specs/                      # Canonical specs (15 capabilities)
+│   └── changes/                    # Active proposals + archive/
+│
+├── docs/PROJECT.md                 # This file
+├── CLAUDE.md                       # Agent instructions
+└── pubspec.yaml                    # Workspace root (Dart pub workspaces)
 ```
 
 ---
@@ -260,7 +269,7 @@ clone_wars/
 class GameState {
   final Board board;                // 2D Int8 array, winner-POV after backfill
   final Int8List diffusedImage;     // Quantized diffused influence map (one byte per cell)
-  final int movePlayed;             // Column (Connect Four) or square index
+  final int movePlayed;             // Row-major intersection index (Go), column (CF), or passMove sentinel
   final int ply;                    // Move number within the game
   final String gameId;
   final int totalMaterial;          // Used by per-game CandidateFilter
@@ -271,34 +280,45 @@ class GameState {
 }
 ```
 
-### Game (per completed game)
+### Game (per completed game, schema v6)
 
 ```dart
 class Game {
-  final int id;
-  final String gameType;            // "connect_four", "chess", etc.
-  final int outcome;                // 1 = player won, 0 = draw, -1 = player lost
+  final String gameId;
+  final String gameType;            // "go", "connect_four"
+  final int? outcome;               // +1 = player won, 0 = draw, -1 = player lost; null while in progress
   final int totalMoves;
-  final DateTime playedAt;
-  final String fallbackStrategy;    // What personality was active
+  final DateTime startedAt;
+  final String fallbackStrategy;    // What personality was active for this game
+  final int? playerArea;            // Go: Chinese-style area for the player at game end (null on resign / pre-v6)
+  final int? cloneArea;             // Go: Chinese-style area for the clone at game end
 }
 ```
 
 ### CloneConfig
 
 ```dart
-// Persisted as a single key/value row in the clone_config table.
-// Slider-selectable values: "random", "ownPileAdjacent", "pileFocus" (default),
-// "greedyConnect", "greedyConnectDefense". "middleFocus" survives in the
-// engine for benchmark use only and is silently coerced to "pileFocus" if
-// found in storage. Legacy "edgeFocus" is also coerced to "pileFocus".
+// Persisted as key/value rows in the clone_config table.
+// User-facing values are game-aware. For Go (active): random (Wanderer),
+// goStarPoints (default), goContact, goDiamond, goGreedyArea.
+// For Connect Four (engine regression): random, pileFocus (default),
+// ownPileAdjacent, greedyConnect, greedyConnectDefense.
+// Legacy strings (e.g. goHugger, pileFocus persisted while in Go mode,
+// middleFocus, edgeFocus) coerce silently to the current game's default
+// at load time.
 enum FallbackStrategy {
   random,
+  // Connect Four
   middleFocus,
   pileFocus,
   ownPileAdjacent,
   greedyConnect,
   greedyConnectDefense,
+  // Go
+  goStarPoints,
+  goDiamond,
+  goContact,
+  goGreedyArea,
 }
 ```
 
@@ -309,27 +329,32 @@ enum FallbackStrategy {
 ### Phase 1: Core Engine + Mobile Game (MVP) — **shipped**
 
 1. **Shared game engine package** — Connect Four rules, board representation, perspective/mirror transforms, diffusion kernel + quantized Int8 image matching, four-query retrieval, heatmap-based move selection.
-2. **Flutter mobile app** — Play Connect Four against the clone. SQLite storage (schema v3). Clone narration. Fallback personality slider.
-3. **Validate the core loop** — Is it fun? Does the clone feel like it's learning? Is the narration engaging?
+2. **Flutter mobile app** — Play Connect Four against the clone. SQLite storage. Clone narration. Fallback personality slider.
+3. **Validate the core loop** — Loop felt fun enough to keep going. ✅
 
-### Phase 2: Diffusion + Polish — **mostly shipped**
+### Phase 2: Diffusion + Polish + Go cutover — **shipped, with one open item**
 
-4. **Diffusion kernels and per-game L1 matching** — done; benchmark validated against the bit-hash baseline before merging.
+4. **Diffusion kernels and per-game L1 matching** — done; benchmark-validated against the bit-hash baseline before merging.
 5. **Inversion** — done; bot-won games are written back as winner-POV at backfill (`invertState`).
-6. **Polish UX** — animations and core polish are in. A game history browser / replay viewer is still on the table.
+6. **Go engine** — rules, capture, simple-ko, two-pass termination, Chinese-style area scoring (was originally a phase 4 item, pulled forward).
+7. **CF → Go mobile cutover** — Flutter app now ships Go on 13×13 as the only user-facing game; CF stays in the engine for regression.
+8. **Pi-Ying rebrand** — Klee One typography, moonlit-goban palette, `皮影` lore on start + settings screens. Schema v5 (rebrand wipe).
+9. **Go fallback personalities + Diamond/Wanderer rework** — five personalities exposed via the slider, ordered by round-robin strength: Wanderer → Star-point (default) → Contact → Diamond → Greedy.
+10. **Area-score history** — schema v6 adds per-game `player_area` / `clone_area`; new `AreaHistoryStrip` on the home screen paints one proportion bar per completed game (cap 100). Post-game screen now shows the area readout.
+11. **Open: game history browser / replay viewer.** Still unbuilt — the per-move log is on disk; surfacing it as a scrubbable replay UI is the natural next polish task.
 
-### Phase 3: Online
+### Phase 3: Online — *not started*
 
-7. **Dart backend** — API for game log sync, user accounts.
-8. **Clone-vs-clone matchmaking** — Background job that pits synced clones against each other.
-9. **Web frontend** — Leaderboards, replays, account management.
-10. **Deploy** — Static web files + Dart backend binary on Hetzner VPS.
+12. **Dart backend** — REST API for game log sync, accounts.
+13. **Clone-vs-clone matchmaking** — background job that pits synced clones against each other.
+14. **Web frontend** — Flutter Web for leaderboards, replays, account management.
+15. **Deploy** — static web files + Dart backend binary on Hetzner VPS.
 
 ### Phase 4: More Games
 
-11. **Othello** — New rules module + diffusion kernel. Everything else reused.
-12. **Chess** — New rules module + movement-based diffusion kernel + piece value mapping.
-13. **Go** — New rules module + spatial diffusion kernel. Performance validation at 19×19.
+16. **Othello** — new rules module + diffusion kernel. Everything else reused.
+17. **Chess** — new rules module + movement-based diffusion kernel + piece value mapping.
+18. **Go 19×19 scale-up** — same rules module, performance validation on the larger board.
 
 ---
 
@@ -340,3 +365,4 @@ enum FallbackStrategy {
 - **Transparency over magic.** The clone always explains itself. The player should never wonder "why did it do that?"
 - **Validate fun before building infrastructure.** The online features are phase 3. If the offline single-player loop isn't compelling, no amount of server architecture saves it.
 - **Simple before clever.** Start with brute-force similarity. Add HNSW or vector databases only when profiling proves it's needed (likely never for single-player).
+- **Spec-driven, not waterfall.** OpenSpec changes capture proposal / design / specs / tasks; archive on ship. Any artifact can be updated at any time as understanding evolves.
