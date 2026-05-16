@@ -342,5 +342,77 @@ void main() {
       final recent = await service.loadRecentGames(limit: 3);
       expect(recent, hasLength(3));
     });
+
+    test('loadRecentGames returns gameId/startedAt/totalMoves', () async {
+      await service.insertGame('g1');
+      await service.updateGameOutcome('g1', 1, 42);
+      await service.updateGameAreaScore('g1', 90, 79);
+
+      final recent = await service.loadRecentGames();
+      expect(recent, hasLength(1));
+      final r = recent.first;
+      expect(r.gameId, 'g1');
+      expect(r.startedAt, greaterThan(0));
+      expect(r.totalMoves, 42);
+      expect(r.outcome, 1);
+      expect(r.playerArea, 90);
+      expect(r.cloneArea, 79);
+    });
+  });
+
+  group('loadGameForReplay', () {
+    test('returns frames in ply ASC order', () async {
+      await service.insertGame('g1');
+      // Insert plies out of order to verify ORDER BY ply ASC works.
+      await service.insertGameState(
+        _state(gameId: 'g1', ply: 2, movePlayed: 30),
+      );
+      await service.insertGameState(
+        _state(gameId: 'g1', ply: 0, movePlayed: 10),
+      );
+      await service.insertGameState(
+        _state(gameId: 'g1', ply: 1, movePlayed: 20),
+      );
+
+      final frames = await service.loadGameForReplay('g1');
+      expect(frames, hasLength(3));
+      expect(frames.map((f) => f.movePlayed), [10, 20, 30]);
+    });
+
+    test('decodes board blobs faithfully', () async {
+      final board = Board(13, 13);
+      board.set(6, 6, 1);
+      board.set(5, 5, -1);
+      board.set(12, 0, 1);
+      await service.insertGame('g1');
+      await service.insertGameState(
+        _state(gameId: 'g1', ply: 0, movePlayed: 6 * 13 + 6, board: board),
+      );
+
+      final frames = await service.loadGameForReplay('g1');
+      expect(frames, hasLength(1));
+      expect(frames.first.board, board);
+      expect(frames.first.movePlayed, 6 * 13 + 6);
+    });
+
+    test('returns empty list for unknown gameId', () async {
+      final frames = await service.loadGameForReplay('nonexistent');
+      expect(frames, isEmpty);
+    });
+
+    test('isolates frames to the requested game', () async {
+      await service.insertGame('a');
+      await service.insertGame('b');
+      await service.insertGameState(_state(gameId: 'a', ply: 0, movePlayed: 1));
+      await service.insertGameState(_state(gameId: 'a', ply: 1, movePlayed: 2));
+      await service.insertGameState(
+        _state(gameId: 'b', ply: 0, movePlayed: 99),
+      );
+
+      final aFrames = await service.loadGameForReplay('a');
+      final bFrames = await service.loadGameForReplay('b');
+      expect(aFrames.map((f) => f.movePlayed), [1, 2]);
+      expect(bFrames.map((f) => f.movePlayed), [99]);
+    });
   });
 }

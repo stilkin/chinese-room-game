@@ -4,7 +4,9 @@ import 'package:game_engine/game_engine.dart';
 import 'src/app_scope.dart';
 import 'src/db/database_service.dart';
 import 'src/screens/game_screen.dart';
+import 'src/screens/history_screen.dart';
 import 'src/screens/post_game_screen.dart';
+import 'src/screens/replay_screen.dart';
 import 'src/screens/settings_screen.dart';
 import 'src/screens/start_screen.dart';
 import 'src/state/game_notifier.dart';
@@ -43,6 +45,17 @@ class PiYingApp extends StatelessWidget {
           '/game': (_) => const GameScreen(),
           '/post-game': (_) => const PostGameScreen(),
           '/settings': (_) => const SettingsScreen(),
+          '/history': (_) => const HistoryScreen(),
+        },
+        onGenerateRoute: (settings) {
+          if (settings.name == '/replay') {
+            final game = settings.arguments! as RecentGame;
+            return MaterialPageRoute(
+              settings: settings,
+              builder: (_) => ReplayScreen(game: game),
+            );
+          }
+          return null;
         },
       ),
     );
