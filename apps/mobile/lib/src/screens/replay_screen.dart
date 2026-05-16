@@ -183,6 +183,11 @@ class _ReplayBody extends StatelessWidget {
                       lastMoveRow: last.row,
                       lastMoveCol: last.col,
                       // No onTap → read-only.
+                      // Faster animation at 2×+ so it stays non-overlapping
+                      // with the inter-move interval (300ms / 200ms / 150ms).
+                      animationDuration: controller.speedFactor >= 2.0
+                          ? const Duration(milliseconds: 60)
+                          : const Duration(milliseconds: 120),
                     ),
                   ),
                 ),
