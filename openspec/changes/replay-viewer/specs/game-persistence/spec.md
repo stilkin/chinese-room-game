@@ -21,6 +21,7 @@ The persistence layer SHALL expose a method `loadRecentGames(limit)` that return
 #### Scenario: Resigned and legacy area columns surface as null
 - **WHEN** a returned row has `player_area IS NULL` or `clone_area IS NULL` in the database
 - **THEN** the corresponding `playerArea` / `cloneArea` fields SHALL be `null`
+- **AND** no separate `end_reason` field is persisted in v1; the History UI uses the null-area state as the implicit "did not reach a territory verdict" signal (see `history-screen/spec.md`)
 
 #### Scenario: In-progress games are excluded
 - **WHEN** a `games` row has `outcome IS NULL`

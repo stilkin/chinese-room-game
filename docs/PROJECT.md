@@ -332,7 +332,7 @@ enum FallbackStrategy {
 2. **Flutter mobile app** — Play Connect Four against the clone. SQLite storage. Clone narration. Fallback personality slider.
 3. **Validate the core loop** — Loop felt fun enough to keep going. ✅
 
-### Phase 2: Diffusion + Polish + Go cutover — **shipped, with one open item**
+### Phase 2: Diffusion + Polish + Go cutover — **shipped**
 
 4. **Diffusion kernels and per-game L1 matching** — done; benchmark-validated against the bit-hash baseline before merging.
 5. **Inversion** — done; bot-won games are written back as winner-POV at backfill (`invertState`).
@@ -341,7 +341,7 @@ enum FallbackStrategy {
 8. **Pi-Ying rebrand** — Klee One typography, moonlit-goban palette, `皮影` lore on start + settings screens. Schema v5 (rebrand wipe).
 9. **Go fallback personalities + Diamond/Wanderer rework** — five personalities exposed via the slider, ordered by round-robin strength: Wanderer → Star-point (default) → Contact → Diamond → Greedy.
 10. **Area-score history** — schema v6 adds per-game `player_area` / `clone_area`; new `AreaHistoryStrip` on the home screen paints one proportion bar per completed game (cap 100). Post-game screen now shows the area readout.
-11. **Open: game history browser / replay viewer.** Still unbuilt — the per-move log is on disk; surfacing it as a scrubbable replay UI is the natural next polish task.
+11. **Game history browser + replay viewer** — home-screen strip is now tappable, opening a History list of completed games; tapping a row opens a scrubbable Replay screen with VCR controls and `½× / 1× / 2× / 3× / 4×` speed selection. Reuses the existing per-ply board blobs — no schema bump, no engine changes.
 
 ### Phase 3: Online — *not started*
 

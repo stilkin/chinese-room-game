@@ -34,7 +34,7 @@ The round-robin gate (50 games/dir, seed 42) confirmed the reshuffle and drove t
 
 ### Gate result (round-robin, 50 games/dir, seed 42, 2000 games total)
 
-```
+```text
 gogreedy     337  (84% win rate)
 diamond      306  (77%)
 gocontact    202  (51%)

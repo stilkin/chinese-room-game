@@ -8,7 +8,7 @@ Two own stones placed *diagonally* adjacent (a **kosumi**) share **zero** libert
 
 The rework's scoring formula:
 
-```
+```text
 score(cell) = (count of side-coloured diagonal neighbours)
             − (count of side-coloured orthogonal neighbours)
 ```

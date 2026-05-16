@@ -62,7 +62,7 @@ final framesForDisplay = (game.outcome == -1)
 
 Stateless screen. On first build it reads the notifier's already-loaded `recentGames` slice — the home screen pays the DB cost once, both screens share it. ListView.separated, one row per game:
 
-```
+```text
 ┌──────────────────────────────────────────────┐
 │ May 12, 14:32        WIN    87 moves         │
 │ ▌▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░▌      84 : 76         │
@@ -119,9 +119,9 @@ class ReplayController extends ChangeNotifier {
 
 The view tree is minimal:
 
-```
+```text
 Scaffold
-  appBar: outcome verdict ("YOU WIN" / "CLONE WINS" / "DRAW" / "RESIGNED")
+  appBar: outcome verdict ("YOU WIN" / "CLONE WINS" / "DRAW" / "GAME OVER")
   body: Column
     - Area readout line (suppressed if outcome == resign or areas missing)
     - GoBoard(board: boardAtCurrentPly, lastMove: lastMoveAtCurrentPly, readOnly: true)

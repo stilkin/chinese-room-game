@@ -4,7 +4,7 @@
 
 The Replay screen SHALL display a read-only Go board widget that renders the state of a completed game at the currently-selected ply. The screen SHALL present, alongside the board:
 
-- A header verdict matching the game's outcome — `YOU WIN`, `CLONE WINS`, `DRAW`, or `RESIGNED`.
+- A header verdict matching the game's outcome — `YOU WIN`, `CLONE WINS`, `DRAW`, or `GAME OVER` (the last is the fallback for any unrecognised outcome value).
 - An area readout line (`AREA · YOU X · CLONE Y`) when both areas are persisted, suppressed otherwise.
 - A move-counter line of the form `Move N / Total`, with `(pass)` appended when the current ply is a pass move.
 - A horizontal ply slider whose range is `[0, totalPlies]`, where ply `0` is the empty pre-game board and ply `k` is the board state after the k-th move.

@@ -49,7 +49,7 @@ class _ReplayScreenState extends State<ReplayScreen> {
     final first = frames.first.board;
     _rows = first.rows;
     _cols = first.cols;
-    _passMove = _cols * _cols;
+    _passMove = _rows * _cols;
     _controller = ReplayController(frames: frames);
   }
 

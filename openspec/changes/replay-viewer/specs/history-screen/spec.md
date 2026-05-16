@@ -2,7 +2,7 @@
 
 ### Requirement: History screen lists completed games
 
-The History screen SHALL display all completed games (up to the same 100-game cap used by the home-screen strip) as a vertical scrollable list, ordered most-recent-first. Each list row SHALL show: the game's start date and time, an outcome chip (`WIN` / `LOSS` / `DRAW` / `RESIGNED`), the total move count, the per-game area split (e.g. "84 : 76", or "—" when area data is unavailable), and a thin proportion bar reusing the same painter as the home-screen strip.
+The History screen SHALL display all completed games (up to the same 100-game cap used by the home-screen strip) as a vertical scrollable list, ordered most-recent-first. Each list row SHALL show: the game's start date and time, an outcome chip (`WIN` / `LOSS` / `DRAW` / `—`), the total move count, the per-game area split (e.g. "84 : 76", or "—" when area data is unavailable), and a thin proportion bar reusing the same painter as the home-screen strip. Resigned losses are not distinguished from natural losses at the chip level — the persistence layer carries no `end_reason` signal in v1, so the implicit "did not reach a territory verdict" cue is the muted-grey DNF bar (rendered whenever the area columns are null).
 
 #### Scenario: List populates from completed games
 - **WHEN** the History screen is opened with N completed games in the database (`outcome IS NOT NULL`)
@@ -17,7 +17,7 @@ The History screen SHALL display all completed games (up to the same 100-game ca
 - **WHEN** the row's game has `playerArea == null` or `cloneArea == null`
 - **THEN** the area-split string SHALL be `—`
 - **AND** the proportion bar SHALL render as a solid muted-grey DNF row
-- **AND** the outcome chip SHALL be `RESIGNED` when `outcome == -1` and the game was a resignation
+- **AND** the outcome chip SHALL still be `WIN` / `LOSS` / `DRAW` based solely on `outcome` (resignation is not surfaced separately in v1)
 
 #### Scenario: Empty state on a fresh install
 - **WHEN** the History screen is opened with zero completed games

@@ -29,7 +29,7 @@
 - [x] 5.1 Run `dart run bin/go_personality_round_robin.dart 50 42` after the rework lands. Record the new aggregate ranking.
 - [x] 5.2 **Aggregate ranking**:
 
-  ```
+  ```text
   gogreedy   337   (84% win rate)
   diamond    306   (77%)
   gocontact  202   (51%)

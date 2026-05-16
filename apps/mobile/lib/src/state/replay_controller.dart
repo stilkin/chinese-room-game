@@ -115,9 +115,10 @@ class ReplayController extends ChangeNotifier {
   }
 
   void _setPly(int p) {
-    final clamped = p.clamp(0, totalPlies);
-    if (clamped == _ply) return;
-    _ply = clamped;
+    // Always notify, even if the clamped ply is unchanged: callers (seek /
+    // step / jump) also stop the ticker, so the play/pause icon needs to
+    // refresh even when the ply itself doesn't move.
+    _ply = p.clamp(0, totalPlies);
     notifyListeners();
   }
 

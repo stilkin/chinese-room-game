@@ -63,9 +63,9 @@
 - [x] 7.3 Loading indicator while frames are in-flight (the small spinner avoids a blank frame on slow devices).
 - [x] 7.4 Wire route in `main.dart`: `'/replay': (ctx) => ReplayScreen(game: ModalRoute.of(ctx)!.settings.arguments as RecentGame)`.
 - [x] 7.5 Layout per design.md:
-  - AppBar with outcome verdict ("YOU WIN" / "CLONE WINS" / "DRAW" / "RESIGNED") and a back arrow.
-  - Area readout line below the appBar (suppressed for RES / null-area games).
-  - `GoBoard(..., readOnly: true)` showing `controller.boardAtCurrentPly()` and `controller.lastMoveAtCurrentPly()`.
+  - AppBar with outcome verdict ("YOU WIN" / "CLONE WINS" / "DRAW" / "GAME OVER") and a back arrow.
+  - Area readout line below the appBar (suppressed when either area is null).
+  - `GoBoard(...)` (no `readOnly` flag — see §3 above; omitting `onTap` makes it read-only) showing `controller.boardAtCurrentPly()` and `controller.lastMoveAtCurrentPly()`.
   - "Move N / Total" text, with "(pass)" appended when the current ply is a pass move.
   - `Slider(min: 0, max: totalPlies.toDouble(), value: controller.ply.toDouble(), onChanged: (v) => controller.seek(v.round()))`.
   - VCR row: five `IconButton`s — `⏮ ⏴ ⏯ ⏵ ⏭`. `⏯` toggles between play/pause icons based on `controller.isPlaying`.
