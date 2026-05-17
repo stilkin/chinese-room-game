@@ -13,8 +13,24 @@ const _kFallbackKey = 'fallback';
 
 /// One row of the recent-games loader. `playerArea` and `cloneArea` are
 /// nullable so resigned games and pre-v6 legacy rows can surface as DNF
-/// (the strip widget renders those as a muted bar).
-typedef RecentGame = ({int outcome, int? playerArea, int? cloneArea});
+/// (the strip widget renders those as a muted bar). The `gameId`,
+/// `startedAt`, and `totalMoves` fields let the same record drive both
+/// the home-screen strip and the History list / Replay navigation.
+typedef RecentGame = ({
+  String gameId,
+  int startedAt,
+  int totalMoves,
+  int outcome,
+  int? playerArea,
+  int? cloneArea,
+});
+
+/// One frame of a replay: the board state after the move at this ply, plus
+/// the move that was played. Boards are returned **as stored** (winner-POV);
+/// for games where the clone won (`outcome == -1`) the caller is responsible
+/// for applying `flipPerspective` before display so the player always renders
+/// as the `+1` side.
+typedef ReplayFrame = ({Board board, int movePlayed});
 
 const _kCreateGameStatesV3 = '''
   CREATE TABLE game_states (
@@ -277,7 +293,14 @@ class DatabaseService {
   Future<List<RecentGame>> loadRecentGames({int limit = 100}) async {
     final rows = await db.query(
       'games',
-      columns: ['outcome', 'player_area', 'clone_area'],
+      columns: [
+        'game_id',
+        'started_at',
+        'total_moves',
+        'outcome',
+        'player_area',
+        'clone_area',
+      ],
       where: 'outcome IS NOT NULL',
       orderBy: 'started_at DESC',
       limit: limit,
@@ -285,9 +308,39 @@ class DatabaseService {
     return [
       for (final r in rows)
         (
-          outcome: r['outcome'] as int,
+          gameId: r['game_id']! as String,
+          startedAt: r['started_at']! as int,
+          totalMoves: (r['total_moves'] as int?) ?? 0,
+          outcome: r['outcome']! as int,
           playerArea: r['player_area'] as int?,
           cloneArea: r['clone_area'] as int?,
+        ),
+    ];
+  }
+
+  /// Returns the per-ply frames of a completed game, ordered by ply
+  /// ascending. Used by the Replay screen. Boards are returned **as stored**
+  /// (winner-POV — for bot-won games the cells are sign-flipped). The caller
+  /// is responsible for applying `flipPerspective` when displaying frames
+  /// from a game where `outcome == -1` so the player always renders as the
+  /// `+1` side.
+  Future<List<ReplayFrame>> loadGameForReplay(String gameId) async {
+    final rows = await db.query(
+      'game_states',
+      columns: ['move_played', 'board', 'rows', 'cols'],
+      where: 'game_id = ?',
+      whereArgs: [gameId],
+      orderBy: 'ply ASC',
+    );
+    return [
+      for (final r in rows)
+        (
+          board: boardFromBlob(
+            r['rows']! as int,
+            r['cols']! as int,
+            r['board']! as Uint8List,
+          ),
+          movePlayed: r['move_played']! as int,
         ),
     ];
   }
@@ -341,13 +394,18 @@ class DatabaseService {
   /// personalities (`pileFocus`, `ownPileAdjacent`, `greedyConnect`,
   /// `greedyConnectDefense`, `middleFocus`) live on in the engine for
   /// benchmark use but are not surfaced via the slider. Any persisted value
-  /// not in this set is silently mapped to the default. Default is Star-point
-  /// — Hugger lost 0/100 to Chaotic in the round-robin gate, so Star-point
-  /// (textbook Go opening) takes the mid-of-slider default seat.
+  /// not in this set is silently mapped to the default. Legacy `goHugger`
+  /// strings (from before the Diamond rework) also coerce to the default —
+  /// the enum value no longer exists so `firstWhere` falls through.
+  /// Default is Star-point: ~30% win-rate against the field means a beginner
+  /// wins most cold-start games (encouraging first impression), and its
+  /// textbook hoshi opener visually communicates "this is Go" from move 1.
+  /// The contemplative shadow-play aesthetic matters more here than holding
+  /// the CF precedent of "default = exact mid-of-slider".
   static const _kUserFacingFallbacks = {
     FallbackStrategy.random,
     FallbackStrategy.goStarPoints,
-    FallbackStrategy.goHugger,
+    FallbackStrategy.goDiamond,
     FallbackStrategy.goContact,
     FallbackStrategy.goGreedyArea,
   };

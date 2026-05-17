@@ -302,9 +302,12 @@ void main() {
     });
   });
 
-  group('Go Hugger fallback', () {
-    test('empty board falls through to Star-point (hoshi opener)', () {
-      final brain = buildGoBrain(FallbackStrategy.goHugger);
+  group('Go Wanderer fallback (random in Go-mode)', () {
+    test('empty board falls through to Star-point opener', () {
+      // No stones → Manhattan-2 prefilter is empty → falls through to
+      // Star-point so the cold-start move isn't a corner stone with no
+      // friends.
+      final brain = buildGoBrain(FallbackStrategy.random);
       final decision = brain.selectMove(Board(13, 13), 1);
       const hoshi = {
         3 * 13 + 3,
@@ -320,28 +323,90 @@ void main() {
       expect(hoshi.contains(decision.move), true);
     });
 
-    test('one own stone at tengen → picks one of its four neighbours', () {
-      final brain = buildGoBrain(FallbackStrategy.goHugger);
+    test('chosen cell is within Manhattan-2 of an existing stone', () {
+      // Single stone at tengen (6,6). The Manhattan-2 neighbourhood is all
+      // empty cells (r,c) with |r-6| + |c-6| ≤ 2 (and ≥ 1, since (6,6) is
+      // occupied). Any decision must land inside that diamond.
+      final brain = buildGoBrain(FallbackStrategy.random);
       final board = Board(13, 13);
       board.set(6, 6, 1);
       final decision = brain.selectMove(board, 1);
-      const neighbours = {5 * 13 + 6, 7 * 13 + 6, 6 * 13 + 5, 6 * 13 + 7};
-      expect(neighbours.contains(decision.move), true);
+      final r = decision.move ~/ 13;
+      final c = decision.move % 13;
+      final manhattan = (r - 6).abs() + (c - 6).abs();
+      expect(manhattan, greaterThanOrEqualTo(1));
+      expect(manhattan, lessThanOrEqualTo(2));
+    });
+
+    test('passMove is never picked when opponent has not passed', () {
+      // The brain layer's `fallbackPool` filters pass out of the candidate
+      // list. Even with the random strategy, pass should not appear unless
+      // the opponent already passed.
+      final brain = buildGoBrain(FallbackStrategy.random);
+      final board = Board(13, 13);
+      board.set(6, 6, 1);
+      final decision = brain.selectMove(board, 1);
+      expect(decision.move, isNot(169)); // 169 = passMove for size=13
+    });
+  });
+
+  group('Go Diamond fallback', () {
+    test('empty board falls through to Star-point (hoshi opener)', () {
+      final brain = buildGoBrain(FallbackStrategy.goDiamond);
+      final decision = brain.selectMove(Board(13, 13), 1);
+      const hoshi = {
+        3 * 13 + 3,
+        3 * 13 + 6,
+        3 * 13 + 9,
+        6 * 13 + 3,
+        6 * 13 + 6,
+        6 * 13 + 9,
+        9 * 13 + 3,
+        9 * 13 + 6,
+        9 * 13 + 9,
+      };
+      expect(hoshi.contains(decision.move), true);
+    });
+
+    test('one own stone at tengen → picks one of the four diagonals', () {
+      // Diamond plays diagonally adjacent (kosumi), not orthogonally adjacent
+      // (dumpling shape). With one stone at (6,6) the diagonals (5,5),(5,7),
+      // (7,5),(7,7) score +1 (diag − orth = 1 − 0); the orthogonals
+      // (5,6),(6,5),(6,7),(7,6) score −1; all other cells score 0.
+      final brain = buildGoBrain(FallbackStrategy.goDiamond);
+      final board = Board(13, 13);
+      board.set(6, 6, 1);
+      final decision = brain.selectMove(board, 1);
+      const diagonals = {5 * 13 + 5, 5 * 13 + 7, 7 * 13 + 5, 7 * 13 + 7};
+      expect(diagonals.contains(decision.move), true);
     });
 
     test(
-      'two own stones with one shared empty neighbour → picks shared cell',
+      'two own stones with a shared diagonal cell → picks the shared diagonal',
       () {
-        final brain = buildGoBrain(FallbackStrategy.goHugger);
+        // Stones at (5,5) and (7,7). Cell (6,6) is diagonal to both
+        // (diag=2, orth=0 → score=+2). Other cells touch at most one stone
+        // diagonally (score ≤ +1).
+        final brain = buildGoBrain(FallbackStrategy.goDiamond);
         final board = Board(13, 13);
-        // Stones at (6,5) and (6,7) — the empty cell at (6,6) touches both
-        // (score 2). Every other cell touches at most one (score ≤ 1).
-        board.set(6, 5, 1);
-        board.set(6, 7, 1);
+        board.set(5, 5, 1);
+        board.set(7, 7, 1);
         final decision = brain.selectMove(board, 1);
         expect(decision.move, 6 * 13 + 6);
       },
     );
+
+    test('avoids "dumpling shape" — never picks orthogonal-adjacent', () {
+      // Single own stone at tengen. With diag−orth scoring, every
+      // orthogonal-adjacent cell scores −1; the bot must prefer a positive
+      // (diagonal) cell over any negative (orthogonal) one.
+      final brain = buildGoBrain(FallbackStrategy.goDiamond);
+      final board = Board(13, 13);
+      board.set(6, 6, 1);
+      final decision = brain.selectMove(board, 1);
+      const dumplings = {5 * 13 + 6, 6 * 13 + 5, 6 * 13 + 7, 7 * 13 + 6};
+      expect(dumplings.contains(decision.move), isFalse);
+    });
   });
 
   group('Go Contact fallback', () {

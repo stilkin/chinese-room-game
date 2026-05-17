@@ -36,18 +36,6 @@ class StartScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Align(
-                            alignment: Alignment.topRight,
-                            child: IconButton(
-                              onPressed: () =>
-                                  Navigator.pushNamed(context, '/settings'),
-                              icon: const Icon(
-                                Icons.settings,
-                                color: PiYingTheme.onSurface,
-                              ),
-                              tooltip: 'Settings',
-                            ),
-                          ),
                           const SizedBox(height: 8),
                           Center(
                             child: Image.asset(
@@ -103,15 +91,26 @@ class StartScreen extends StatelessWidget {
                                   _onNewGame(context, confirm: false),
                               child: const Text('NEW GAME'),
                             ),
-                          // Spacer absorbs extra vertical room when the
-                          // history is short, pinning the strip to the
-                          // bottom; collapses to zero when the strip is tall
-                          // enough to fill (and slightly overflow into the
-                          // outer SingleChildScrollView).
-                          const Spacer(),
-                          Text('LAST GAMES', style: textTheme.titleSmall),
-                          const SizedBox(height: 8),
-                          AreaHistoryStrip(games: notifier.recentGames),
+                          const SizedBox(height: 4),
+                          TextButton(
+                            onPressed: () =>
+                                Navigator.pushNamed(context, '/settings'),
+                            child: const Text('SETTINGS'),
+                          ),
+                          const SizedBox(height: 32),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () =>
+                                Navigator.pushNamed(context, '/history'),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text('LAST GAMES', style: textTheme.titleSmall),
+                                const SizedBox(height: 8),
+                                AreaHistoryStrip(games: notifier.recentGames),
+                              ],
+                            ),
+                          ),
                           const SizedBox(height: 16),
                         ],
                       ),

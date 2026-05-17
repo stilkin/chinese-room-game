@@ -18,16 +18,16 @@ import 'package:game_engine/game_engine.dart';
 ///   defaults: 50 games per direction, seed 42.
 ///
 /// Tokens (all five Go personalities):
-///   chaotic, gostar, gohugger, gocontact, gogreedy
+///   wanderer, gostar, diamond, gocontact, gogreedy
 void main(List<String> args) {
   final gamesPerDir = args.isNotEmpty ? int.parse(args[0]) : 50;
   final seed = args.length > 1 ? int.parse(args[1]) : 42;
 
   final rules = GoRules(size: 13);
   final personalities = <String, FallbackStrategy>{
-    'chaotic': FallbackStrategy.random,
+    'wanderer': FallbackStrategy.random,
     'gostar': FallbackStrategy.goStarPoints,
-    'gohugger': FallbackStrategy.goHugger,
+    'diamond': FallbackStrategy.goDiamond,
     'gocontact': FallbackStrategy.goContact,
     'gogreedy': FallbackStrategy.goGreedyArea,
   };

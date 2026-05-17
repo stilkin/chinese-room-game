@@ -51,7 +51,7 @@
 - [x] 7.1 `flutter analyze` clean.
 - [x] 7.2 `flutter test` clean (36 mobile tests + any new ones).
 - [x] 7.3 `flutter build apk --debug` succeeds.
-- [ ] 7.4 Install and smoke on device:
+- [x] 7.4 Install and smoke on device:
   - Start screen renders new palette + Klee One typography.
   - `皮影` and Latin co-render in the same font on screen.
   - Game board: warm dark wood, cream lines, ivory + slate stones still readable.

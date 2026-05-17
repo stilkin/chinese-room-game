@@ -9,6 +9,22 @@ const _kClone = Color(0xFF0E0E14);
 const _kDraw = PiYingTheme.lineColor;
 const _kDnf = PiYingTheme.onSurfaceMuted;
 
+RecentGame _game({
+  required int outcome,
+  required int? playerArea,
+  required int? cloneArea,
+  String gameId = 'g',
+  int startedAt = 0,
+  int totalMoves = 0,
+}) => (
+  gameId: gameId,
+  startedAt: startedAt,
+  totalMoves: totalMoves,
+  outcome: outcome,
+  playerArea: playerArea,
+  cloneArea: cloneArea,
+);
+
 /// Pumps the strip at a fixed width so the painter's rects are predictable.
 Future<AreaHistoryPainter> _pumpStrip(
   WidgetTester tester,
@@ -52,30 +68,34 @@ void main() {
     expect(find.text('no games yet'), findsOneWidget);
   });
 
+  // Geometry constants mirrored from area_history_strip.dart so the
+  // assertions stay readable. If those move, this file moves with them.
+  const endcapWidth = 3.0;
+  const endcapInnerGap = 1.5;
+  const stripWidth = 200.0;
+  const barWidth = stripWidth - 2 * endcapWidth - 2 * endcapInnerGap; // 191.0
+
   testWidgets('player win: ivory endcaps + ivory-leaning bar', (tester) async {
     final painter = await _pumpStrip(tester, [
-      (outcome: 1, playerArea: 80, cloneArea: 20),
+      _game(outcome: 1, playerArea: 80, cloneArea: 20),
     ]);
     final colours = painter.drawnRects.map((r) => r.color).toList();
     // Two endcap rects + two proportion rects = 4 fills total per row.
     expect(painter.drawnRects, hasLength(4));
     expect(colours.where((c) => c == _kPlayer).length, 3); // 2 endcaps + bar
     expect(colours.where((c) => c == _kClone).length, 1);
-    // Player fraction is 0.8 → bar is 80% of (200 - 6) = 155.2
-    final barRects = painter.drawnRects
-        .where((r) => r.rect.left >= 3 && r.rect.right <= 197)
-        .toList();
-    final playerBar = barRects.firstWhere((r) => r.color == _kPlayer);
-    expect(playerBar.rect.width, closeTo(0.8 * (200 - 6), 0.001));
+    final playerBarRect = painter.drawnRects.firstWhere(
+      (r) => r.color == _kPlayer && r.rect.width > endcapWidth,
+    );
+    expect(playerBarRect.rect.width, closeTo(0.8 * barWidth, 0.001));
   });
 
   testWidgets('clone win: dark endcaps', (tester) async {
     final painter = await _pumpStrip(tester, [
-      (outcome: -1, playerArea: 30, cloneArea: 90),
+      _game(outcome: -1, playerArea: 30, cloneArea: 90),
     ]);
-    // First and last rects (the endcaps) should both be the clone colour.
     final endcaps = painter.drawnRects
-        .where((r) => r.rect.width == 3.0)
+        .where((r) => r.rect.width == endcapWidth)
         .toList();
     expect(endcaps, hasLength(2));
     expect(endcaps.every((r) => r.color == _kClone), isTrue);
@@ -83,10 +103,10 @@ void main() {
 
   testWidgets('draw: cream-amber endcaps, 50/50 bar', (tester) async {
     final painter = await _pumpStrip(tester, [
-      (outcome: 0, playerArea: 50, cloneArea: 50),
+      _game(outcome: 0, playerArea: 50, cloneArea: 50),
     ]);
     final endcaps = painter.drawnRects
-        .where((r) => r.rect.width == 3.0)
+        .where((r) => r.rect.width == endcapWidth)
         .toList();
     expect(endcaps.every((r) => r.color == _kDraw), isTrue);
     final playerBar = painter.drawnRects.firstWhere((r) => r.color == _kPlayer);
@@ -94,27 +114,42 @@ void main() {
     expect(playerBar.rect.width, closeTo(cloneBar.rect.width, 0.001));
   });
 
-  testWidgets('DNF / null area: solid muted bar, no endcaps', (tester) async {
+  testWidgets('DNF / null area: muted bar limited to inner width, no endcaps', (
+    tester,
+  ) async {
     final painter = await _pumpStrip(tester, [
-      (outcome: -1, playerArea: null, cloneArea: null),
+      _game(outcome: -1, playerArea: null, cloneArea: null),
     ]);
     expect(painter.drawnRects, hasLength(1));
     expect(painter.drawnRects.first.color, _kDnf);
-    // Spans the whole width.
-    expect(painter.drawnRects.first.rect.width, 200.0);
+    // Limited to the proportion-bar slot — endcap zones stay transparent.
+    expect(painter.drawnRects.first.rect.width, closeTo(barWidth, 0.001));
+    expect(
+      painter.drawnRects.first.rect.left,
+      closeTo(endcapWidth + endcapInnerGap, 0.001),
+    );
   });
 
   testWidgets('multi-row strip stacks top-down', (tester) async {
     final painter = await _pumpStrip(tester, [
-      (outcome: 1, playerArea: 60, cloneArea: 40),
-      (outcome: -1, playerArea: 30, cloneArea: 70),
-      (outcome: -1, playerArea: null, cloneArea: null),
+      _game(outcome: 1, playerArea: 60, cloneArea: 40),
+      _game(outcome: -1, playerArea: 30, cloneArea: 70),
+      _game(outcome: -1, playerArea: null, cloneArea: null),
     ]);
     // 3 rows × varying rect counts (4, 4, 1) = 9 rects total.
     expect(painter.drawnRects, hasLength(9));
-    // First row near top, last row farther down.
+    // ≤10 games → max row height 5.0 with gap 1.5, so tops are 0, 6.5, 13.
     final tops = painter.drawnRects.map((r) => r.rect.top).toSet().toList()
       ..sort();
-    expect(tops, [0.0, 4.0, 8.0]);
+    expect(tops, [0.0, 6.5, 13.0]);
+  });
+
+  test('rowHeightFor scales smoothly from max to min', () {
+    expect(rowHeightFor(0), 5.0);
+    expect(rowHeightFor(10), 5.0);
+    expect(rowHeightFor(100), 1.5);
+    expect(rowHeightFor(150), 1.5);
+    // Linearly between: at midpoint (55 games) ≈ midpoint between max and min.
+    expect(rowHeightFor(55), closeTo((5.0 + 1.5) / 2, 0.05));
   });
 }
