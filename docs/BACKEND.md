@@ -26,10 +26,25 @@ Three product surfaces:
 | Edge        | Caddy v2 — TLS, reverse-proxy, static file serving                     |
 | Runtime     | Dart, `dart compile exe` → single native binary, no SDK on the server  |
 | Framework   | Dart Frog or Relic (decide at first PR)                                |
-| Database    | SQLite, replicated off-box with Litestream                             |
-| Backup      | Litestream → OCI Object Storage Always Free (or bg-production disk — TBD) |
+| Database    | SQLite (`sqlite3` via FFI from the Dart binary)                        |
+| Backup      | Hourly `sqlite3 .backup` snapshot on OCI; `bg-dev` pulls via rsync over SSH (pull-based — bg-dev holds the key, OCI never reaches out) |
 
 Schema is kept portable so a later swap to PostgreSQL stays open if scale demands it. **Don't use SQLite-isms** (`INSERT OR REPLACE`, etc.); thin data-access layer keeps statements uniform.
+
+### Repo layout
+
+Phase 3 adds two new app directories alongside the existing `apps/mobile/`:
+
+- `apps/server/` — Dart Frog backend (this document's subject).
+- `apps/play/` — Flutter Web client, served at `piying.pocito.fyi/play/`, built with `--base-href=/play/`.
+
+Name-by-role rather than name-by-tech. The marketing landing pages for `pocito.fyi/` and `piying.pocito.fyi/` live in a **separate repository**, not in this one.
+
+### Conventions
+
+- **Timestamps:** UTC everywhere, ISO 8601 in JSON. The rating period boundary is `00:00 UTC` daily.
+- **Schema migrations:** numbered, inline, single `migrations.dart` file with a switch-style `if (oldVersion < N) { /* DDL */ }` ladder. Mirrors the mobile app's `database_service.dart` pattern, which has run through v6 without pain. No external migration library.
+- **Pagination:** offset-based (`?offset=&limit=`). Rankings reshuffle once per day at the rating-period boundary; within a single browsing session the ordering is stable, so cursor pagination would be premature complexity. Document the rating-period caveat in API responses.
 
 ### Routing on `piying.pocito.fyi`
 
@@ -54,7 +69,7 @@ This dissolves several problems we'd otherwise face: no accounts, no email, no p
 | Field               | Type        | Notes                                                            |
 |---------------------|-------------|------------------------------------------------------------------|
 | `id`                | uuid        | server-assigned                                                  |
-| `device_id_hash`    | opaque      | **strictly server-side**, never in any public JSON               |
+| `device_id_hash`    | opaque      | SHA-256 of the client's random `device_id`. **Strictly server-side**, never in any public JSON. |
 | `display_name`      | string      | user-chosen                                                      |
 | `discriminator`     | 4 digits    | derived from `hash(device_id)`; same device+name → same #1234   |
 | `game_type`         | string      | one game per bot: `go-13`, `othello`, `chess`, eventually `go-19` |
@@ -72,6 +87,15 @@ This dissolves several problems we'd otherwise face: no accounts, no email, no p
 | `state`             | enum        | `active` / `settled` / `archived`                                |
 
 **Display-name uniqueness is Discord-style:** `name#discriminator` must be unique, but the same `display_name` may repeat across devices. A device that picks a name another device has used gets a different discriminator (because their device_id hashes differ), so collisions are silent.
+
+**Display-name validation rules** (applied at submission):
+
+- Charset: Unicode, stored as UTF-8.
+- Length: 2–20 code points.
+- Normalisation: NFC (so `café` typed two different ways collapses).
+- Strip leading/trailing whitespace.
+- Reject control chars (`< U+0020`), zero-width chars (`U+200B/C/D`, `U+FEFF`) — spoofing vectors against discriminator uniqueness.
+- Reject the literal `#` character (collides with discriminator separator in display).
 
 ### Lifecycle
 
@@ -106,11 +130,13 @@ This handles "I wiped my local history" gracefully without privileging or punish
 
 Anonymous device-token bearer auth. No passwords, no email, no recovery.
 
-1. First sync from a device: server generates a 256-bit random token, stores `argon2id(token)` keyed by `device_id_hash`, returns the plaintext token to the client once.
+1. First sync from a device: server generates a 256-bit random token, stores `HMAC-SHA256(server_secret, token)` keyed by `device_id_hash`, returns the plaintext token to the client once.
 2. Client persists the token in the platform secure keystore (iOS Keychain, Android Keystore).
 3. All subsequent requests carry `Authorization: Bearer <token>`.
 4. All bots from the same device share one token — the device owns its bot family.
 5. **No rotation, no expiry for v1.** Add only if abuse appears.
+
+**Why HMAC-SHA256 and not Argon2id?** Argon2id is the right answer when the input is a low-entropy password and you need to slow down brute-force. Our tokens are 256 bits of pure randomness — brute-forcing is infeasible regardless of hash speed, so the memory-hardness of Argon2id buys nothing while costing ~64 MB peak RAM per verify (relevant on the 954 MiB box during auth-floods). HMAC keyed with a server-side secret (loaded from env) gives a *pepper* effect: a DB leak alone doesn't let an attacker reverse the tokens. Fast, simple, in `package:crypto`.
 
 **Trade-off:** keystore loss = bot family lost. v1 accepts this. A recovery-phrase UX is a deferred feature.
 
@@ -135,13 +161,15 @@ Plus a `device_token` in the header and a `display_name` in the body.
 
 ### Server side
 
-1. Verify token (Argon2id match on `device_id_hash`).
+1. Verify token (recompute `HMAC-SHA256(server_secret, token)`, compare to stored hash keyed by `device_id_hash`).
 2. Check rate limits (per device, per IP).
-3. Check `game_state_hash` for dedup — if it matches an existing bot from this device, **silent replace**.
+3. Compute `game_state_hash = sha256(canonical-json(sorted([{game_id, ply_count}, ...])))` for dedup. If it matches an existing bot from this device → **silent replace** (no new row).
 4. Run reset detection.
 5. Compute diffused images from raw boards using the current kernel.
 6. Insert one bot row + N game rows + M state rows in a single transaction.
 7. Return `201 Created` with the new bot's `id` and current state.
+
+The dedup hash is intentionally derived from `(game_id, ply_count)` tuples rather than from the upload byte stream — so re-uploads with the same set of games dedup correctly even if metadata noise (timestamps, encoding order) differs.
 
 Estimated wire size: 1000-game bot ≈ 5–20 MB raw → ~1–3 MB after zstd. Acceptable.
 
@@ -178,6 +206,14 @@ Provisional ratings (Lichess-style "?" suffix) are derived from `RD > threshold`
 ## Match Scheduling
 
 A continuous worker thread inside the Dart binary picks the highest-priority bot from a Glicko-2-driven queue, pairs it with a similar-RD opponent (±200 rating), runs the match using the same Dart engine the mobile app uses, updates ratings, repeats.
+
+**Pairing priority formula** (starvation-proof):
+
+```
+priority = max(RD, days_since_last_match × 50)
+```
+
+Glicko-2 RD already grows with idleness, which handles most of the starvation case implicitly. The explicit floor (`days_since_last_match × 50`) guarantees that even a long-converged Settled bot eventually forces its way back to the front of the queue if no opponent has been challenging it. After 30 days idle, priority = 1500 — higher than any active bot. Cap at ~2000 so it doesn't completely dominate. Three lines of Dart.
 
 Throttle target: keep CPU under ~30% so HTTP request latency stays bounded. Configurable via env var.
 
@@ -229,12 +265,31 @@ replays(
 
 The split lets leaderboard queries hit `matches` without dragging blob storage along.
 
-### Wire format
+### Wire format — per-game move shape
 
-JSON: `{ "moves": [12, 34, ...], "outcome": 1, ... }`. zstd at the HTTP layer.
+Moves are **per-game JSON objects**, not a uniform int across games. Each rules module owns its move shape via two methods:
 
-- Moves are **ints**, not coordinates. Coord rendering (e.g. "D4") happens client-side via the `rules.moveDescription` helper (deferred work from the `go-mobile-app` change finally has a real consumer). Optional `?format=coord` query param on the replay endpoint for server-side rendering when curl-debugging.
-- Sizing: ~200 plies → 1–2 KB raw → ~500 B zstd. 10,000 matches ≈ 5 MB on disk. Trivial.
+```dart
+abstract class GameRules {
+  Map<String, dynamic> moveToJson(Move move);
+  Move moveFromJson(Map<String, dynamic> json);
+}
+```
+
+Concrete shapes:
+
+| Game         | Place move shape                            | Pass / special                    |
+|--------------|---------------------------------------------|-----------------------------------|
+| Go-13/19     | `{"r": int, "c": int}`                      | `{"pass": true}`                  |
+| Connect Four | `{"col": int}`                              | n/a (no pass)                     |
+| Othello      | `{"r": int, "c": int}`                      | `{"pass": true}`                  |
+| Chess        | `{"from": "e2", "to": "e4", "promo": null}` | resign / draw-offer if surfaced   |
+
+Place and pass moves are both JSON **objects** (never bare strings or magic-sentinel ints like `-1`). Deserialisers check for the discriminating key (`"pass"`, `"col"`, `"from"`, etc.) and dispatch — no shape collisions, no ambiguity. The server never introspects move shapes; it stores the per-match blob as opaque JSON and hands it back at read time. Game-specific rendering (e.g. coord strings) is the client's concern via the deferred `rules.moveDescription` helper.
+
+Sizing: 200-ply Go match ≈ 2 KB raw → ~500 B zstd. Even chess (more verbose moves) stays <2 KB per match post-compression. 10,000 matches ≈ 5 MB on disk. Trivial.
+
+Optional `?format=coord` query param on the replay endpoint runs moves through `rules.moveDescription` server-side for curl-debugging convenience.
 
 ### Standards-format export
 
@@ -349,13 +404,38 @@ Admin moderation endpoints (review queue, name override, bot suspension) live un
 
 Each bot needs the player's full game log to make moves. A 1000-game player ≈ 5–20 MB of `engine_data`.
 
-OCI Object Storage Always Free is 20 GB → roughly 1000–4000 bots before scale-out is needed. Mitigations if it becomes real:
+OCI box has 45 GB local disk → roughly 2000–9000 bots before disk is the bottleneck (well before the conceptual identity-model bottleneck). Mitigations if it becomes real:
 
 - Cap `engine_data` size per bot (e.g. last 500 games).
-- Pay for additional storage.
-- Move blobs out of SQLite into Object Storage with row-level references.
+- Pay for additional OCI storage.
+- Move blobs out of SQLite into OCI Object Storage with row-level references.
 
 None of these are needed for v1.
+
+### Backup pipeline (v1)
+
+- **On OCI**, hourly cron: `sqlite3 /opt/pi-ying/data/pi-ying.db ".backup /opt/pi-ying/data/snapshot.db"`. SQLite's `.backup` is consistent even with the server running.
+- **On OCI**, a dedicated `pi-ying-snapshot` Unix user (read-only filesystem access to the snapshot path, no shell).
+- **On `bg-dev`**, hourly cron: `rsync -av pi-ying-snapshot@oci:/opt/pi-ying/data/snapshot.db /backups/pi-ying/$(date +%Y%m%d-%H%M).db.gz` (pipe through `gzip` after rsync to compress at-rest).
+- **Retention on bg-dev**: 24 hourly + 7 daily + 6 monthly = ~37 snapshots, via `find -mtime` cleanup. Expected on-disk: <2 GB through year one.
+- bg-dev holds the SSH private key. OCI only holds the corresponding public key in `~pi-ying-snapshot/.ssh/authorized_keys`. OCI never reaches out — if OCI is compromised, the attacker has no path to bg-dev.
+- bg-dev also runs `boardgamers` dev; leave a 5–10 GB buffer for that service's own growth. Revisit backup target (borg/restic for dedup, or OCI Object Storage) when Pi-Ying DB exceeds ~3 GB or bg-dev free space drops below 10 GB.
+
+Litestream (continuous WAL replication) is deferred. Hourly snapshots are sufficient for a bot league — worst-case loss is a few hours of league matches that replay cheaply.
+
+### Backup priority: what's actually load-bearing
+
+The vast majority of DB volume (bots, matches, replays) is **recoverable**: bots' `engine_data` lives on the owners' devices and can be re-published; matches and replays re-derive deterministically from immutable bots via the league worker. Only the **auth layer** is genuinely irreplaceable:
+
+| Asset | If lost | Recovery |
+|---|---|---|
+| `server_secret` (env var) | All tokens unverifiable | **Not recoverable.** Every user re-bootstraps. |
+| `devices` table | Same as above, plus device→bot family link is broken | **Not recoverable.** |
+| `bots.engine_data` | Inactive users' bots gone forever | Active users re-publish |
+| `matches` + `replays` | Match history gone | Worker re-runs all pairings (hours/days at scale) |
+| `moderation` | Reports/actions lost | Not recoverable but low-impact |
+
+**Back up `server_secret` separately** (e.g. password manager) at deploy time — it's the single most critical artifact and tiny enough that the DB backup pipeline isn't the right home for it. The DB backup catches the `devices` table automatically.
 
 ---
 
@@ -376,7 +456,7 @@ Minor / v1.1+ tuning, none of which block design or initial implementation:
 
 Build with **one OpenSpec change per shippable feature**, not one big "backend" change. Suggested sequence:
 
-1. `backend-bootstrap` — Dart Frog/Relic skeleton, systemd unit, Caddy reverse-proxy wiring, `/api/health`.
+1. `backend-bootstrap` — `apps/server/` Dart Frog skeleton, workspace integration, systemd unit, Caddy reverse-proxy wiring, `/api/health`, local-build-and-scp deploy workflow.
 2. `backend-auth` — `POST /api/devices`, token storage, middleware.
 3. `backend-publish` — `POST /api/bots`, schema, dedup, reset detection, kernel-version recompute pipeline.
 4. `backend-leaderboard` — `GET /api/leaderboards/:game_type` + read-side `GET /api/bots/:id`.

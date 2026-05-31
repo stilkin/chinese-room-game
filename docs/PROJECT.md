@@ -248,7 +248,10 @@ chinese-room-game/                  # (Pi-Ying)
 │       │   └── main.dart                   # wires GoRules(size: 13)
 │       └── pubspec.yaml                    # depends on game_engine
 │
-│   # apps/web/ and server/ are phase 3 — directories not yet created.
+│   # apps/server/ (Dart Frog backend) and apps/play/ (Flutter Web client,
+│   # served at piying.pocito.fyi/play/) are phase 3 — not yet created.
+│   # See docs/BACKEND.md.
+│   # The pocito.fyi landing pages live in a separate repository.
 │
 ├── openspec/                       # Spec-driven workflow
 │   ├── config.yaml
