@@ -90,7 +90,7 @@
 - [x] 9.2 `cd apps/mobile && flutter analyze && flutter test` clean.
 - [x] 9.3 `flutter build apk --debug` succeeds.
 - [x] 9.4 `npx openspec validate replay-viewer --strict` clean.
-- [ ] 9.5 Manual on-device smoke:
+- [x] 9.5 Manual on-device smoke:
   - Tap the home-screen strip → History screen lists my games most-recent-first.
   - Tap a player-won game → Replay opens at final board; `⏮` rewinds; `⏯` plays; speed chip cycles 1×/2×/4×.
   - Tap a bot-won game → my stones still render as ivory throughout the replay.
@@ -101,4 +101,4 @@
 
 ## 10. Archive
 
-- [ ] 10.1 After ship + smoke confirms, move `openspec/changes/replay-viewer/` to `openspec/changes/archive/<date>-replay-viewer/`.
+- [x] 10.1 After ship + smoke confirms, move `openspec/changes/replay-viewer/` to `openspec/changes/archive/<date>-replay-viewer/`.
