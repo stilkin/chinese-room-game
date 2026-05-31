@@ -64,4 +64,4 @@
 
 ## 8. Archive
 
-- [ ] 8.1 After ship + smoke, move `openspec/changes/go-personality-rework/` to `openspec/changes/archive/<date>-go-personality-rework/`. Sequence-wise, archive `go-fallback-personalities` *first* (its specs describe the pre-rework state) then this rework (which MODIFIES on top).
+- [x] 8.1 After ship + smoke, move `openspec/changes/go-personality-rework/` to `openspec/changes/archive/<date>-go-personality-rework/`. Sequence-wise, archive `go-fallback-personalities` *first* (its specs describe the pre-rework state) then this rework (which MODIFIES on top).

@@ -84,4 +84,4 @@
 
 ## 9. Archive
 
-- [ ] 9.1 After ship + smoke, move `openspec/changes/go-fallback-personalities/` to `openspec/changes/archive/<date>-go-fallback-personalities/` per the project's archive convention.
+- [x] 9.1 After ship + smoke, move `openspec/changes/go-fallback-personalities/` to `openspec/changes/archive/<date>-go-fallback-personalities/` per the project's archive convention.

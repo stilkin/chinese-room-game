@@ -63,4 +63,4 @@
 
 ## 7. Archive
 
-- [ ] 7.1 After ship + smoke confirms, move `openspec/changes/area-score-history/` to `openspec/changes/archive/<date>-area-score-history/`.
+- [x] 7.1 After ship + smoke confirms, move `openspec/changes/area-score-history/` to `openspec/changes/archive/<date>-area-score-history/`.
