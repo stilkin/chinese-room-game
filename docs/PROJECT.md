@@ -190,8 +190,9 @@ One language across the entire stack. The game engine is written once as a share
 
 - Compiled to a native binary via `dart compile exe` — no runtime dependencies.
 - REST API for game log sync, clone-vs-clone match execution, leaderboard serving.
-- Database: PostgreSQL.
-- Hosting: Hetzner VPS (EU data centers, low cost).
+- Database: SQLite, replicated off-box with Litestream. Schema kept portable so a later Postgres swap stays open if scale demands it.
+- Hosting: Oracle Cloud Always Free (`crg-oci-mini-3`, Ubuntu 24.04, ~954 MiB RAM). Caddy terminates TLS and reverse-proxies to the native binary.
+- Routing on `piying.pocito.fyi`: `/` = marketing landing, `/play` = Flutter Web client (`--base-href=/play/`), `/api/*` = the Dart binary.
 
 ### Shared Game Engine Package
 
@@ -348,7 +349,7 @@ enum FallbackStrategy {
 12. **Dart backend** — REST API for game log sync, accounts.
 13. **Clone-vs-clone matchmaking** — background job that pits synced clones against each other.
 14. **Web frontend** — Flutter Web for leaderboards, replays, account management.
-15. **Deploy** — static web files + Dart backend binary on Hetzner VPS.
+15. **Deploy** — static web files + Dart backend binary on Oracle Cloud Always Free, fronted by Caddy.
 
 ### Phase 4: More Games
 
